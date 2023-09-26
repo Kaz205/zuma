@@ -815,6 +815,39 @@ struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 	return __node_2_se(left);
 }
 
+static inline bool pick_curr(struct cfs_rq *cfs_rq,
+			     struct sched_entity *curr, struct sched_entity *wakee)
+{
+	/*
+	 * Nothing to preserve...
+	 */
+	if (!curr || !sched_feat(RUN_TO_PARITY))
+		return false;
+
+	/*
+	 * Allow preemption at the 0-lag point -- even if not all of the slice
+	 * is consumed. Note: placement of positive lag can push V left and render
+	 * @curr instantly ineligible irrespective the time on-cpu.
+	 */
+	if (!entity_eligible(cfs_rq, curr))
+		return false;
+
+	/*
+	 * Don't preserve @curr when the @wakee has a shorter slice and earlier
+	 * deadline. IOW, explicitly allow preemption.
+	 */
+	if (sched_feat(PREEMPT_SHORT) && wakee &&
+	    wakee->slice < curr->slice &&
+	    (s64)(wakee->deadline - curr->deadline) < 0)
+		return false;
+
+	/*
+	 * Preserve @curr to allow it to finish its first slice.
+	 * See the HACK in set_next_entity().
+	 */
+	return curr->vlag == curr->deadline;
+}
+
 /*
  * Earliest Eligible Virtual Deadline First
  *
@@ -834,28 +867,27 @@ struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
  *
  * Which allows tree pruning through eligibility.
  */
-static struct sched_entity *pick_eevdf(struct cfs_rq *cfs_rq)
+static struct sched_entity *pick_eevdf(struct cfs_rq *cfs_rq, struct sched_entity *wakee)
 {
 	struct rb_node *node = cfs_rq->tasks_timeline.rb_root.rb_node;
 	struct sched_entity *se = __pick_first_entity(cfs_rq);
 	struct sched_entity *curr = cfs_rq->curr;
 	struct sched_entity *best = NULL;
 
+	if (curr && !curr->on_rq)
+		curr = NULL;
+
 	/*
 	 * We can safely skip eligibility check if there is only one entity
 	 * in this cfs_rq, saving some cycles.
 	 */
 	if (cfs_rq->nr_running == 1)
-		return curr && curr->on_rq ? curr : se;
-
-	if (curr && (!curr->on_rq || !entity_eligible(cfs_rq, curr)))
-		curr = NULL;
+		return curr ?: se;
 
 	/*
-	 * Once selected, run a task until it either becomes non-eligible or
-	 * until it gets a new slice. See the HACK in set_next_entity().
+	 * Preserve @curr to let it finish its slice.
 	 */
-	if (sched_feat(RUN_TO_PARITY) && curr && curr->vlag == curr->deadline)
+	if (pick_curr(cfs_rq, curr, wakee))
 		return curr;
 
 	/* Pick the leftmost entity if it's eligible */
@@ -5082,7 +5114,7 @@ pick_next_entity(struct rq *rq, struct cfs_rq *cfs_rq)
 		return cfs_rq->next;
 	}
 
-	struct sched_entity *se = pick_eevdf(cfs_rq);
+	struct sched_entity *se = pick_eevdf(cfs_rq, NULL);
 	if (se->sched_delayed) {
 		dequeue_entities(rq, se, DEQUEUE_SLEEP | DEQUEUE_DELAYED);
 		SCHED_WARN_ON(se->sched_delayed);
@@ -7847,10 +7879,7 @@ static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_
 	cfs_rq = cfs_rq_of(se);
 	update_curr(cfs_rq);
 
-	/*
-	 * XXX pick_eevdf(cfs_rq) != se ?
-	 */
-	if (pick_eevdf(cfs_rq) == pse)
+	if (pick_eevdf(cfs_rq, pse) == pse)
 		goto preempt;
 
 	return;
