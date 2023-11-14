@@ -961,8 +961,8 @@ static int sugov_init(struct cpufreq_policy *policy)
 	policy->governor_data = sg_policy;
 	sg_policy->tunables = tunables;
 
-	tunables->up_rate_limit_us = cpufreq_policy_transition_delay_us(policy);
-	tunables->down_rate_limit_us = cpufreq_policy_transition_delay_us(policy);
+	tunables->up_rate_limit_us = 500;
+	tunables->down_rate_limit_us = 1000;
 	tunables->response_time_ms = sugov_calc_freq_response_ms(sg_policy);
 	sugov_update_response_time_mult(sg_policy);
 
