@@ -332,6 +332,23 @@ static inline bool __dl_overflow(struct dl_bw *dl_b, unsigned long cap,
 unsigned long approximate_util_avg(unsigned long util, u64 delta);
 u64 approximate_runtime(unsigned long util);
 
+static inline unsigned long task_util(struct task_struct *p)
+{
+       return READ_ONCE(p->se.avg.util_avg);
+}
+
+static inline unsigned long _task_util_est(struct task_struct *p)
+{
+       struct util_est ue = READ_ONCE(p->se.avg.util_est);
+
+       return max(ue.ewma, (ue.enqueued & ~UTIL_AVG_UNCHANGED));
+}
+
+static inline unsigned long task_util_est(struct task_struct *p)
+{
+       return max(task_util(p), _task_util_est(p));
+}
+
 /*
  * Any governor that relies on util signal to drive DVFS, must populate these
  * percpu dvfs_update_delay variables.
@@ -340,6 +357,13 @@ u64 approximate_runtime(unsigned long util);
  * update to the hardware in us.
  */
 DECLARE_PER_CPU_READ_MOSTLY(u64, dvfs_update_delay);
+
+/*
+ * The utilization value equivalent to dvfs_update_delay. Used to detect tasks
+ * that run for a short period of time lower than the dvfs ability to change
+ * frequencies.
+ */
+DECLARE_PER_CPU_READ_MOSTLY(u64, dvfs_update_delay_util);
 
 /*
  * DVFS decision are made at discrete points. If CPU stays busy, the util will
