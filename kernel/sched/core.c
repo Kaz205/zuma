@@ -4901,6 +4901,8 @@ static inline void update_cpufreq_ctx_switch(struct rq *rq)
 		return;
 
 	if (likely(fair_policy(current->policy))) {
+		unsigned long uclamp_min, uclamp_max;
+		unsigned long rq_util;
 
 		/*
 		 * Allow cpufreq updates once for every update_load_avg() decay.
@@ -4911,6 +4913,14 @@ static inline void update_cpufreq_ctx_switch(struct rq *rq)
 		}
 
 		if (unlikely(current->in_iowait))
+			goto force_update;
+
+		/* Force an update if perf hints are required to be applied */
+		uclamp_min = uclamp_eff_value(current, UCLAMP_MIN);
+		uclamp_max = uclamp_eff_value(current, UCLAMP_MAX);
+		rq_util = rq->cfs.avg.util_avg;
+
+		if (uclamp_min > rq_util || uclamp_max < rq_util)
 			goto force_update;
 
 		return;
