@@ -49,8 +49,6 @@ static int s5100_lcd_notifier(struct notifier_block *notifier,
 
 #define msecs_to_loops(t) (loops_per_jiffy / 1000 * HZ * t)
 
-#define RUNTIME_PM_AFFINITY_CORE 2
-
 static struct modem_ctl *g_mc;
 
 static int s5100_poweroff_pcie(struct modem_ctl *mc, bool force_off);
@@ -342,7 +340,7 @@ static irqreturn_t ap_wakeup_handler(int irq, void *data)
 		(gpio_val == 1 ? IRQF_TRIGGER_LOW : IRQF_TRIGGER_HIGH));
 	mif_enable_irq(&mc->cp_gpio_irq[CP_GPIO_IRQ_CP2AP_WAKEUP]);
 
-	queue_work_on(RUNTIME_PM_AFFINITY_CORE, mc->wakeup_wq,
+	queue_work(mc->wakeup_wq,
 			(gpio_val == 1 ? &mc->wakeup_work : &mc->suspend_work));
 
 	return IRQ_HANDLED;
@@ -1977,7 +1975,7 @@ static int s5100_pm_notifier(struct notifier_block *notifier,
 				(gpio_val == 1 ? IRQF_TRIGGER_LOW : IRQF_TRIGGER_HIGH));
 			mif_enable_irq(&mc->cp_gpio_irq[CP_GPIO_IRQ_CP2AP_WAKEUP]);
 
-			queue_work_on(RUNTIME_PM_AFFINITY_CORE, mc->wakeup_wq,
+			queue_work(mc->wakeup_wq,
 				(gpio_val == 1 ? &mc->wakeup_work : &mc->suspend_work));
 		}
 		spin_unlock_irqrestore(&mc->pcie_pm_lock, flags);
@@ -2134,14 +2132,12 @@ static int s5100_call_state_notifier(struct notifier_block *nb,
 		synchronize_irq(mc->cp_gpio_irq[CP_GPIO_IRQ_CP2AP_CP_WRST_N].num);
 		cpif_wake_unlock(mc->ws_wrst);
 		logbuffer_log(mc->log, "released wrst wakelock after voice call");
-		queue_work_on(RUNTIME_PM_AFFINITY_CORE, mc->wakeup_wq,
-			&mc->call_off_work);
+		queue_work(mc->wakeup_wq, &mc->call_off_work);
 		break;
 	case MODEM_VOICE_CALL_ON:
 		mc->pcie_voice_call_on = true;
 		mif_enable_irq(&mc->cp_gpio_irq[CP_GPIO_IRQ_CP2AP_CP_WRST_N]);
-		queue_work_on(RUNTIME_PM_AFFINITY_CORE, mc->wakeup_wq,
-			&mc->call_on_work);
+		queue_work(mc->wakeup_wq, &mc->call_on_work);
 		break;
 	default:
 		mif_err("undefined call event = %lu\n", action);
