@@ -2558,6 +2558,9 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 	pr_debug("setting new policy for CPU %u: %u - %u kHz\n",
 		 new_data.cpu, new_data.min, new_data.max);
 
+	if (new_data.cpu == 8 && new_data.max > 2556000)
+		new_data.max = 2556000;
+
 	/*
 	 * Verify that the CPU speed can be set within these limits and make sure
 	 * that min <= max.
