@@ -257,6 +257,7 @@
   _dev_info
   __dev_kfree_skb_any
   devm_add_action
+  devm_bitmap_zalloc
   devm_clk_get
   devm_free_irq
   devm_fwnode_gpiod_get_index
@@ -728,6 +729,7 @@
   mipi_dsi_packet_format_is_long
   misc_deregister
   misc_register
+  mmc_app_cmd
   __mmdrop
   mod_delayed_work_on
   mod_timer
@@ -1053,6 +1055,7 @@
   scnprintf
   sdhci_calc_clk
   sdhci_enable_clk
+  sdhci_execute_tuning
   sdhci_pltfm_clk_get_max_clock
   sdhci_pltfm_pmops
   sdhci_pltfm_suspend
@@ -1293,7 +1296,9 @@
   __traceiter_android_rvh_wake_up_new_task
   __traceiter_android_vh_binder_wakeup_ilocked
   __traceiter_android_vh_cpufreq_online
+  __traceiter_android_vh_dup_task_struct
   __traceiter_android_vh_update_topology_flags_workfn
+  __traceiter_android_vh_use_amu_fie
   __traceiter_binder_transaction_received
   __traceiter_cpu_frequency_limits
   __tracepoint_android_rvh_account_irq
@@ -1321,9 +1326,13 @@
   __tracepoint_android_rvh_wake_up_new_task
   __tracepoint_android_vh_binder_wakeup_ilocked
   __tracepoint_android_vh_cpufreq_online
+  __tracepoint_android_vh_dup_task_struct
   __tracepoint_android_vh_update_topology_flags_workfn
+  __tracepoint_android_vh_use_amu_fie
   __tracepoint_binder_transaction_received
   __tracepoint_cpu_frequency_limits
+  tracing_off
+  tracing_on
   try_module_get
   __ubsan_handle_cfi_check_fail_abort
   __udelay
