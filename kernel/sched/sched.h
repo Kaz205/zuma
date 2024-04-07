@@ -333,6 +333,15 @@ unsigned long approximate_util_avg(unsigned long util, u64 delta);
 u64 approximate_runtime(unsigned long util);
 
 /*
+ * Any governor that relies on util signal to drive DVFS, must populate these
+ * percpu dvfs_update_delay variables.
+ *
+ * It should describe the rate/delay at which the governor sends DVFS freq
+ * update to the hardware in us.
+ */
+DECLARE_PER_CPU_READ_MOSTLY(u64, dvfs_update_delay);
+
+/*
  * DVFS decision are made at discrete points. If CPU stays busy, the util will
  * continue to grow, which means it could need to run at a higher frequency
  * before the next decision point was reached. IOW, we can't follow the util as
@@ -341,13 +350,14 @@ u64 approximate_runtime(unsigned long util);
  * to run at adequate performance point.
  *
  * This function provides enough headroom to provide adequate performance
- * assuming the CPU continues to be busy.
+ * assuming the CPU continues to be busy. This headroom is based on the
+ * dvfs_update_delay of the cpufreq governor.
  *
- * At the moment it is a constant multiplication with 1.25.
+ * XXX: Should we provide headroom when the util is decaying?
  */
-static inline unsigned long apply_dvfs_headroom(unsigned long util)
+static inline unsigned long apply_dvfs_headroom(unsigned long util, int cpu)
 {
-	return util + (util >> 2);
+	return approximate_util_avg(util, per_cpu(dvfs_update_delay, cpu));
 }
 
 /*
