@@ -4889,6 +4889,46 @@ static inline void balance_callbacks(struct rq *rq, struct callback_head *head)
 
 #endif
 
+static inline void update_cpufreq_ctx_switch(struct rq *rq)
+{
+	if (unlikely(current->sched_class == &stop_sched_class))
+		return;
+
+	if (unlikely(current->sched_class == &idle_sched_class))
+		return;
+
+	if (unlikely(task_has_idle_policy(current)))
+		return;
+
+	if (likely(fair_policy(current->policy))) {
+
+		/*
+		 * Allow cpufreq updates once for every update_load_avg() decay.
+		 */
+		if (unlikely(rq->cfs.decayed)) {
+			rq->cfs.decayed = false;
+			goto force_update;
+		}
+
+		if (unlikely(current->in_iowait))
+			goto force_update;
+
+		return;
+	}
+
+	/* RT and DL should always send a freq update */
+
+	/* XXX ignore updates for sugov worker thread */
+
+force_update:
+
+	/*
+	 * Request freq update after __balance_callbacks to take into account
+	 * any changes to rq.
+	 */
+	cpufreq_update_util(rq, current->in_iowait ? SCHED_CPUFREQ_IOWAIT : 0);
+}
+
 static inline void
 prepare_lock_switch(struct rq *rq, struct task_struct *next, struct rq_flags *rf)
 {
@@ -4915,6 +4955,7 @@ static inline void finish_lock_switch(struct rq *rq)
 	 */
 	spin_acquire(&__rq_lockp(rq)->dep_map, 0, 0, _THIS_IP_);
 	__balance_callbacks(rq);
+	update_cpufreq_ctx_switch(rq);
 	raw_spin_rq_unlock_irq(rq);
 }
 
