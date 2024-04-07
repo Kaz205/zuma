@@ -330,6 +330,7 @@ static inline bool __dl_overflow(struct dl_bw *dl_b, unsigned long cap,
 }
 
 unsigned long approximate_util_avg(unsigned long util, u64 delta);
+u64 approximate_runtime(unsigned long util);
 
 /*
  * DVFS decision are made at discrete points. If CPU stays busy, the util will
