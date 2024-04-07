@@ -618,6 +618,11 @@ struct cfs_rq {
 		unsigned long	runnable_avg;
 	} removed;
 
+	/*
+	 * Store whether last update_load_avg() has decayed
+	 */
+	bool			decayed;
+
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	unsigned long		tg_load_avg_contrib;
 	long			propagate;
@@ -2836,6 +2841,8 @@ static inline u64 irq_time_read(int cpu)
 #ifdef CONFIG_CPU_FREQ
 DECLARE_PER_CPU(struct update_util_data __rcu *, cpufreq_update_util_data);
 
+DECLARE_STATIC_KEY_FALSE(cpufreq_update_enabled);
+
 /**
  * cpufreq_update_util - Take a note about CPU utilization changes.
  * @rq: Runqueue to carry out the update for.
@@ -2861,6 +2868,9 @@ DECLARE_PER_CPU(struct update_util_data __rcu *, cpufreq_update_util_data);
 static inline void cpufreq_update_util(struct rq *rq, unsigned int flags)
 {
 	struct update_util_data *data;
+
+	if (!static_branch_likely(&cpufreq_update_enabled))
+		return;
 
 	data = rcu_dereference_sched(*per_cpu_ptr(&cpufreq_update_util_data,
 						  cpu_of(rq)));

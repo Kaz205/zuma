@@ -12,6 +12,8 @@
 DEFINE_PER_CPU(struct update_util_data __rcu *, cpufreq_update_util_data);
 EXPORT_PER_CPU_SYMBOL_GPL(cpufreq_update_util_data);
 
+DEFINE_STATIC_KEY_FALSE(cpufreq_update_enabled);
+
 /**
  * cpufreq_add_update_util_hook - Populate the CPU's update_util_data pointer.
  * @cpu: The CPU to set the pointer for.
@@ -37,6 +39,8 @@ void cpufreq_add_update_util_hook(int cpu, struct update_util_data *data,
 	if (WARN_ON(!data || !func))
 		return;
 
+	static_branch_enable(&cpufreq_update_enabled);
+
 	if (WARN_ON(per_cpu(cpufreq_update_util_data, cpu)))
 		return;
 
@@ -58,6 +62,7 @@ EXPORT_SYMBOL_GPL(cpufreq_add_update_util_hook);
 void cpufreq_remove_update_util_hook(int cpu)
 {
 	rcu_assign_pointer(per_cpu(cpufreq_update_util_data, cpu), NULL);
+	static_branch_disable(&cpufreq_update_enabled);
 }
 EXPORT_SYMBOL_GPL(cpufreq_remove_update_util_hook);
 
