@@ -329,6 +329,8 @@ static inline bool __dl_overflow(struct dl_bw *dl_b, unsigned long cap,
 	       cap_scale(dl_b->bw, cap) < dl_b->total_bw - old_bw + new_bw;
 }
 
+unsigned long approximate_util_avg(unsigned long util, u64 delta);
+
 /*
  * DVFS decision are made at discrete points. If CPU stays busy, the util will
  * continue to grow, which means it could need to run at a higher frequency
