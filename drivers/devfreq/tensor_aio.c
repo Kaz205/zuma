@@ -200,6 +200,8 @@ struct cpu_pmu_evt {
 
 static DEFINE_PER_CPU(struct cpu_pmu_evt, pevt_pcpu);
 
+int cpufreq_update = 0;
+
 static struct perf_event *create_pev(struct perf_event_attr *attr, int cpu)
 {
 	return perf_event_create_kernel_counter(attr, cpu, NULL, NULL, NULL);
@@ -307,7 +309,7 @@ static void kick_memperfd(void)
 	unsigned long prev, now = jiffies;
 
 	prev = atomic_long_read(&last_run_jiffies);
-	if (time_before(now, prev + MEMPERFD_POLL_HZ))
+	if (!READ_ONCE(cpufreq_update) && time_before(now, prev + MEMPERFD_POLL_HZ))
 		return;
 
 	if (atomic_long_cmpxchg_relaxed(&last_run_jiffies, prev, now) != prev)
@@ -317,6 +319,8 @@ static void kick_memperfd(void)
 	smp_acquire__after_ctrl_dep();
 	if (swait_active(&memperfd_waitq))
 		swake_up_one(&memperfd_waitq);
+
+	WRITE_ONCE(cpufreq_update, 0);
 }
 
 static u32 find_cpu_freq(struct cpufreq_policy *pol, u64 khz, u32 relation)

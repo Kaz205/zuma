@@ -69,6 +69,8 @@ struct sugov_cpu {
 
 static DEFINE_PER_CPU(struct sugov_cpu, sugov_cpu);
 
+extern int cpufreq_update;
+
 /************************ Governor internals ***********************/
 
 static bool sugov_should_update_freq(struct sugov_policy *sg_policy, u64 time)
@@ -143,6 +145,9 @@ static bool sugov_update_next_freq(struct sugov_policy *sg_policy, u64 time,
 
 	if (sugov_up_down_rate_limit(sg_policy, time, next_freq))
 		return false;
+
+	if (next_freq > sg_policy->next_freq)
+		WRITE_ONCE(cpufreq_update, 1);
 
 	sg_policy->next_freq = next_freq;
 	sg_policy->last_freq_update_time = time;
