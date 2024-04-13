@@ -215,7 +215,7 @@ typedef struct {
 	uint8_t streamid[HDCP_RP_MAX_STREAMID_NUM];
 	uint8_t seq_num_m[HDCP_RP_SEQ_NUM_M_LEN];
 	uint8_t k[HDCP_RP_K_LEN];
-	uint8_t streamid_type[HDCP_RP_STREAMID_TYPE_LEN];
+	uint8_t streamid_type[HDCP_RP_MAX_STREAMID_TYPE_LEN];
 } hci_genstreaminfo_t;
 
 typedef struct {

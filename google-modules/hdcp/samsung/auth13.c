@@ -258,8 +258,9 @@ int hdcp13_dplink_handle_irq(void)
 	    bstatus & DP_BSTATUS_REAUTH_REQ) {
 		hdcp_err("Resetting link and encryption\n");
 		hdcp_tee_disable_enc();
-		return -EAGAIN;
+		return -EFAULT;
 	}
 
+	hdcp_err("unexpected BStatus(0x%x). ignore\n", bstatus);
 	return 0;
 }
