@@ -3,7 +3,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -1124,9 +1124,6 @@ static void dhd_prot_txstatus_process_aggr_wi(dhd_pub_t *dhd, void *msg);
 #if defined(WL_MONITOR)
 extern bool dhd_monitor_enabled(dhd_pub_t *dhd, int ifidx);
 extern void dhd_rx_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx);
-#if defined(DBG_PKT_MON)
-extern void dhd_80211_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx);
-#endif /* DBG_PKT_MON */
 #endif /* WL_MONITOR */
 
 /* Configure a soft doorbell per D2H ring */
@@ -8332,7 +8329,8 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, int ringtype, uint32 
 				} else {
 					if (msg->flags & BCMPCIE_PKT_FLAGS_FRAME_802_11) {
 						DHD_TRACE(("Received 802.11 packet for PKT MON\n"));
-						dhd_80211_mon_pkt(dhd, msg, pkt, ifidx);
+						dhd_dbg_monitor_pkt(dhd, msg, pkt,
+							msg->cmn_hdr.if_id);
 						continue;
 					}
 #endif /* DBG_PKT_MON */
@@ -9277,8 +9275,9 @@ BCMFASTPATH(dhd_prot_txstatus_process_each_aggr_item)(dhd_pub_t *dhd, msgbuf_rin
 	dhd->dma_stats.txdata--;
 	dhd->dma_stats.txdata_sz -= len;
 #endif /* DMAMAP_STATS */
-	pkt_fate = dhd_dbg_process_tx_status(dhd, pkt, pktid,
-		ltoh16(txstatus->compl_aggr_hdr.status) & WLFC_CTL_PKTFLAG_MASK);
+	pkt_fate = dhd_dbg_process_tx_status(dhd, ltoh32(txstatus->compl_aggr_hdr.if_id),
+			pkt, pktid,
+			ltoh16(txstatus->compl_aggr_hdr.status) & WLFC_CTL_PKTFLAG_MASK);
 #ifdef DHD_PKT_LOGGING
 	if (dhd->d11_tx_status) {
 		uint16 status = ltoh16(txstatus->compl_aggr_hdr.status) &
@@ -9527,7 +9526,7 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 	dhd->dma_stats.txdata--;
 	dhd->dma_stats.txdata_sz -= len;
 #endif /* DMAMAP_STATS */
-	pkt_fate = dhd_dbg_process_tx_status(dhd, pkt, pktid,
+	pkt_fate = dhd_dbg_process_tx_status(dhd, flow_info->ifindex, pkt, pktid,
 		ltoh16(txstatus->compl_hdr.status) & WLFC_CTL_PKTFLAG_MASK);
 #ifdef DHD_PKT_LOGGING
 	if (dhd->d11_tx_status) {
@@ -10082,7 +10081,11 @@ BCMFASTPATH(dhd_prot_txdata)(dhd_pub_t *dhd, void *PKTBUF, uint8 ifidx)
 	pktlen  = PKTLEN(dhd->osh, PKTBUF);
 
 	/* TODO: re-look into dropped packets */
+#ifdef DHD_PKT_MON_DUAL_STA
+	DHD_DBG_PKT_MON_TX(dhd, ifidx, PKTBUF, pktid, FRAME_TYPE_ETHERNET_II, 0, FALSE);
+#else
 	DHD_DBG_PKT_MON_TX(dhd, PKTBUF, pktid, FRAME_TYPE_ETHERNET_II, 0, FALSE);
+#endif /* DHD_PKT_MON_DUAL_STA */
 
 	dhd_handle_pktdata(dhd, ifidx, PKTBUF, pktdata, pktid,
 			pktlen, NULL, &dhd_udr,
@@ -12480,10 +12483,13 @@ dhd_fillup_ioct_reqst(dhd_pub_t *dhd, uint16 len, uint cmd, void* buf, int ifidx
 	rqstlen = len;
 	resplen = len;
 
-	/* Limit ioct request to MSGBUF_MAX_MSG_SIZE bytes including hdrs */
-	/* 8K allocation of dongle buffer fails */
-	/* dhd doesnt give separate input & output buf lens */
-	/* so making the assumption that input length can never be more than 2k */
+	/* fail 'set' ioctl request if len > MSGBUF_MAX_MSG_SIZE bytes including hdrs */
+	if ((action & WL_IOCTL_ACTION_SET) && (rqstlen > MSGBUF_IOCTL_MAX_RQSTLEN)) {
+		DHD_ERROR(("%s: rqstlen(%u) larger than %u\n", __FUNCTION__, rqstlen,
+			MSGBUF_IOCTL_MAX_RQSTLEN));
+		return BCME_BADLEN;
+	}
+
 	rqstlen = MIN(rqstlen, MSGBUF_IOCTL_MAX_RQSTLEN);
 
 #ifdef PCIE_INB_DW

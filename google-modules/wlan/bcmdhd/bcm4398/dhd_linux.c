@@ -1,7 +1,7 @@
 /*
  * Basically selected code segments from usb-cdc.c and usb-rndis.c
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -281,6 +281,10 @@ static void dhd_blk_tsfl_handler(struct work_struct * work);
 #if defined(DHD_MESH)
 #include <dhd_mesh_route.h>
 #endif /* defined(DHD_MESH) */
+
+#ifdef DBG_PKT_MON
+#include <802.11.h>
+#endif /* DBG_PKT_MON */
 
 #if defined(DHD_TCP_WINSIZE_ADJUST)
 static uint target_ports[MAX_TARGET_PORTS] = {20, 0, 0, 0, 0};
@@ -2509,9 +2513,6 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				 */
 				dhd_enable_packet_filter(1, dhd);
 #endif /* PKT_FILTER_SUPPORT */
-#ifdef APF
-				dhd_dev_apf_enable_filter(dhd_linux_get_primary_netdev(dhd));
-#endif /* APF */
 #ifdef ARP_OFFLOAD_SUPPORT
 				if (dhd->arpoe_enable) {
 					dhd_arp_offload_enable(dhd, TRUE);
@@ -2610,9 +2611,6 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				/* disable pkt filter */
 				dhd_enable_packet_filter(0, dhd);
 #endif /* PKT_FILTER_SUPPORT */
-#ifdef APF
-				dhd_dev_apf_disable_filter(dhd_linux_get_primary_netdev(dhd));
-#endif /* APF */
 #ifdef PASS_ALL_MCAST_PKTS
 				allmulti = 1;
 				for (i = 0; i < DHD_MAX_IFS; i++) {
@@ -5295,14 +5293,20 @@ static bool dhd_check_hang(struct net_device *net, dhd_pub_t *dhdp, int error)
 }
 
 #if defined(DBG_PKT_MON) && defined(PCIE_FULL_DONGLE)
+#define PKT_MON_TYPESTR_MAX 30
 void
-dhd_80211_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
+dhd_dbg_monitor_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 {
 	/* Distinguish rx/tx frame */
 	wl_aml_header_v1_t hdr;
 	bool wpa_sup;
 	struct sk_buff *skb = pkt;
 	frame_type type;
+	struct dot11_management_header *d11hdr;
+	uint8 subtype;
+	char type_str[PKT_MON_TYPESTR_MAX] = {0};
+	msg_eapol_t eapol_type;
+	bool ack, direction;
 #ifdef DHD_PKT_LOGGING
 	struct ether_header *eh;
 	uint32 pktid;
@@ -5314,8 +5318,25 @@ dhd_80211_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 	PKTPULL(dhdp->osh, skb, sizeof(hdr));
 	wpa_sup = !!(hdr.flags & WL_AML_F_EAPOL);
 	type = wpa_sup ? FRAME_TYPE_ETHERNET_II : FRAME_TYPE_80211_MGMT;
+	if (type == FRAME_TYPE_80211_MGMT) {
+		d11hdr = (struct dot11_management_header *)PKTDATA(dhdp->osh, skb);
+		subtype = FC_SUBTYPE(d11hdr->fc);
+		dhd_dbg_monitor_mgmt_str(subtype, type_str, sizeof(type_str));
+	} else if (type == FRAME_TYPE_ETHERNET_II) {
+		eapol_type = dhd_is_4way_msg(PKTDATA(dhdp->osh, skb));
+		dhd_dbg_monitor_eapol_str(eapol_type, type_str, sizeof(type_str));
+	}
+	ack = !!(hdr.flags & WL_AML_F_ACKED);
+	direction = !!(hdr.flags & WL_AML_F_DIRECTION);
 
-	if (hdr.flags & WL_AML_F_DIRECTION) {
+	if (DHD_PKT_MON_DUMP_ON()) {
+		DHD_PKT_MON(("%s: fw driven pkt [%s] %s %s status:%d ifidx:%d length:%d\n",
+			__FUNCTION__, direction ? "TXS" : "RX",
+			wpa_sup ? "EAPOL" : "80211", type_str, ack,
+			ifidx, PKTLEN(dhdp->osh, skb)));
+	}
+
+	if (direction) {
 		bool ack = !!(hdr.flags & WL_AML_F_ACKED);
 #ifdef DHD_PKT_LOGGING
 		/* Send Tx-ed 4HS packet in dongle to packet logging buffer */
@@ -5328,9 +5349,13 @@ dhd_80211_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 #endif /* DHD_PKT_LOGGING */
 
 		/* Send Tx-ed mgmt frame and 4HS packet in dongle to upper layer */
+#ifdef DHD_PKT_MON_DUAL_STA
+		DHD_DBG_PKT_MON_TX(dhdp, ifidx, skb, 0, type, (uint8)ack, TRUE);
+#else
 		DHD_DBG_PKT_MON_TX(dhdp, skb, 0, type, (uint8)ack, TRUE);
+#endif /* DHD_PKT_MON_DUAL_STA */
 
-		/* skb can be null here. do null check if skb is used */
+		/* skb can be null here. do not refer to skb */
 	} else {
 #ifdef DHD_PKT_LOGGING
 		/* Send Rx-ed 4HS packet in dongle to packet logging buffer */
@@ -5342,9 +5367,13 @@ dhd_80211_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 #endif /* DHD_PKT_LOGGING */
 
 		/* Send Rx-ed mgmt frame and 4HS packet in dongle to upper layer */
+#ifdef DHD_PKT_MON_DUAL_STA
+		DHD_DBG_PKT_MON_RX(dhdp, ifidx, (struct sk_buff *)skb, type, TRUE);
+#else
 		DHD_DBG_PKT_MON_RX(dhdp, (struct sk_buff *)skb, type, TRUE);
+#endif /* DHD_PKT_MON_DUAL_STA */
 
-		/* skb can be null here. do null check if skb is used */
+		/* skb can be null here. do not refer to skb */
 	}
 }
 #endif /* DBG_PKT_MON && PCIE_FULL_DONGLE */
@@ -6897,6 +6926,9 @@ dhd_force_collect_init_fail_dumps(dhd_pub_t *dhdp)
 		dhdp->collect_sdtc = TRUE;
 #endif /* DHD_SDTC_ETB_DUMP */
 		dhdp->memdump_type = DUMP_TYPE_DONGLE_INIT_FAILURE;
+#ifdef DHD_COREDUMP
+		dhd_get_ewp_init_state(dhdp->bus, &dhdp->ewp_init_state);
+#endif /* DHD_COREDUMP */
 		dhd_bus_mem_dump(dhdp);
 	} else {
 		DHD_PRINT(("%s:Not collecting memdump, memdump_enabled=%d, busstate=%d\n",
@@ -17864,16 +17896,6 @@ dhd_dev_apf_add_filter(struct net_device *ndev, u8* program,
 
 	DHD_APF_LOCK(ndev);
 
-	/* delete, if filter already exists */
-	if (dhdp->apf_set) {
-		ret = _dhd_apf_delete_filter(ndev, PKT_FILTER_APF_ID);
-		if (unlikely(ret)) {
-			DHD_ERROR(("%s: Failed to delete APF filter\n", __FUNCTION__));
-			goto exit;
-		}
-		dhdp->apf_set = FALSE;
-	}
-
 	ret = _dhd_apf_add_filter(ndev, PKT_FILTER_APF_ID, program, program_len);
 	if (ret) {
 		DHD_ERROR(("%s: Failed to add APF filter\n", __FUNCTION__));
@@ -20245,6 +20267,10 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	char lr_fn[DHD_FUNC_STR_LEN] = "\0";
 	trap_t *tr;
 	bool collect_coredump = FALSE;
+	char trap_code[DHD_TRAP_CODE_LEN] = {0};
+	char trap_subcode[DHD_TRAP_CODE_LEN] = {0};
+	int written_len;
+	uint8 ewp_init_state;
 #endif /* DHD_COREDUMP */
 	uint32 memdump_type;
 	bool set_linkdwn_cto = FALSE;
@@ -20264,6 +20290,9 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 
 	/* keep it locally to avoid overwriting in other contexts */
 	memdump_type = dhdp->memdump_type;
+#ifdef DHD_COREDUMP
+	ewp_init_state = dhdp->ewp_init_state;
+#endif /* DHD_COREDUMP */
 
 	DHD_GENERAL_LOCK(dhdp, flags);
 	if (DHD_BUS_CHECK_DOWN_OR_DOWN_IN_PROGRESS(dhdp)) {
@@ -20420,13 +20449,27 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	bzero(dhdp->memdump_str, DHD_MEMDUMP_LONGSTR_LEN);
 	dhd_convert_memdump_type_to_str(memdump_type, dhdp->memdump_str,
 		DHD_MEMDUMP_LONGSTR_LEN, dhdp->debug_dump_subcmd);
+	written_len = strlen(dhdp->memdump_str);
 	if (memdump_type == DUMP_TYPE_DONGLE_TRAP &&
 		dhdp->dongle_trap_occured == TRUE) {
+
+		if (dhdp->extended_trap_data) {
+			dhdpcie_get_etd_trapcode_str(dhdp, trap_code, trap_subcode,
+				DHD_TRAP_CODE_LEN);
+			snprintf(&dhdp->memdump_str[written_len],
+					DHD_MEMDUMP_LONGSTR_LEN - written_len,
+					"_%s_%s", trap_code, trap_subcode);
+		}
+
 		tr = &dhdp->last_trap_info;
 		dhd_lookup_map(dhdp->osh, map_path,
 			ltoh32(tr->epc), pc_fn, ltoh32(tr->r14), lr_fn);
-		sprintf(&dhdp->memdump_str[strlen(dhdp->memdump_str)], "_%.79s_%.79s",
-				pc_fn, lr_fn);
+		written_len = strlen(dhdp->memdump_str);
+		snprintf(&dhdp->memdump_str[written_len], DHD_MEMDUMP_LONGSTR_LEN - written_len,
+			 "_%.79s_%.79s", pc_fn, lr_fn);
+	} else if (memdump_type == DUMP_TYPE_DONGLE_INIT_FAILURE) {
+		snprintf(&dhdp->memdump_str[written_len], DHD_MEMDUMP_LONGSTR_LEN - written_len,
+			"_0x%x", ewp_init_state);
 	}
 	DHD_PRINT(("%s: dump reason: %s\n", __FUNCTION__, dhdp->memdump_str));
 

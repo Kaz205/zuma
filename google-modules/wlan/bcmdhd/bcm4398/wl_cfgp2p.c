@@ -1,7 +1,7 @@
 /*
  * Linux cfgp2p driver
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -178,6 +178,7 @@ bool wl_cfgp2p_is_p2p_action(void *frame, u32 frame_len)
 bool wl_cfgp2p_is_gas_action(void *frame, u32 frame_len)
 {
 	wifi_p2psd_gas_pub_act_frame_t *sd_act_frm;
+	u8 gas_frame_type = WL_PUB_AF_STYPE_INVALID;
 
 	if (frame == NULL)
 		return false;
@@ -188,7 +189,7 @@ bool wl_cfgp2p_is_gas_action(void *frame, u32 frame_len)
 	if (sd_act_frm->category != P2PSD_ACTION_CATEGORY)
 		return false;
 
-	if (wl_cfg80211_is_dpp_gas_action(frame, frame_len)) {
+	if (wl_cfg80211_is_dpp_gas_action(frame, frame_len, &gas_frame_type)) {
 		return true;
 	}
 

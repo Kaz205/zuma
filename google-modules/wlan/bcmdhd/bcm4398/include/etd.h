@@ -1,7 +1,7 @@
 /*
  * Extended Trap data component interface file.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -78,8 +78,97 @@ typedef enum {
 	TAG_TRAP_AXI_HOST_INFO		= 25u, /* AXI Host log */
 	TAG_TRAP_AXI_SR_ERROR		= 26u, /* AXI SR error log */
 	TAG_TRAP_MEM_BIT_FLIP		= 27u, /* Memory 1-Bit Flip error */
+	TAG_TRAP_SUBCODE		= 28u, /* The trap subcode */
 	TAG_TRAP_LAST  /* This must be the last entry */
 } hnd_ext_tag_trap_t;
+
+/* sub codes corresponding to TAG_TRAP_PHY comes from phy_crash_reason_t */
+
+/* sub codes corresponding to TAG_TRAP_PSM_WD. All other subcodes are internal */
+typedef enum etd_subcode_psmwd {
+	ETDSC_PSMWD_MN_TXCRS_HIGH		= 10,	/* waiting due to txcrs high sensing */
+	ETDSC_PSMWD_ER_TXERR_WAIT		= 19,	/* waiting due to txerr recovery */
+	ETDSC_PSMWD_BACKPLANE_REG_WRITE		= 11,	/* reg write timing out */
+	ETDSC_PSMWD_BACKPLANE_REG_READ		= 12,	/* reg read timing out */
+} etd_subcode_psmwd_t;
+
+/* sub codes corr to TAG_TRAP_MAC_WAKE, PHYTXERR_THRESH. All other subcodes are internal */
+typedef enum etd_subcode_psmassert {
+	ETDSC_PSMAS_TXEN_AT_SLEEP		= 1,	/* uCode going to sleep will TX pending */
+	ETDSC_PSMAS_ASSERT2_AVAILABLE		= 2,	/* PSDU Length zero due to faulty
+							 * trigger frame params
+							 */
+	ETDSC_PSMAS_HTC_OFFSET_UNSUPPORTED	= 3,	/* HTC Offset indicated by FW
+							 * is not supported for bitsub
+							 */
+	ETDSC_PSMAS_ASSERT_IQEST_HANG		= 4,	/* IQEst failure */
+	ETDSC_PSMAS_FCBS_RADIO_PD_ERROR		= 11,	/* radio pwr down err during band switch */
+	ETDSC_PSMAS_FCBS_RADIO_PU_ERROR		= 12,	/* radio power up err during band switch */
+	ETDSC_PSMAS_RX_AMSDU_HDR_ERROR		= 13,	/* AMSDU header error during rx */
+	ETDSC_PSMAS_BMC_CORRUPT_ERROR		= 14,	/* Memory corruption error */
+	ETDSC_PSMAS_RESETCCA_RST2RX_ERR		= 29,	/* PHYSM didnt come to RX post resetcca */
+	ETDSC_PSMAS_BAD_BP_ACCESS		= 30,	/* Assert to catch BP access failure */
+	ETDSC_PSMAS_DUAL_BTCX_ANT_INVALID	= 51,	/* Ant. requested by BT is invalid. */
+	ETDSC_PSMAS_PHYERR_TXCRS_HI		= 100,	/* TX CRS High for more than 20ms during
+							 * PHY TX error handling
+							 */
+	ETDSC_PSMAS_MACCLEANUP_TXCRS_HI		= 101,	/* TX CRS High after mac cleanup */
+	ETDSC_PSMAS_PREWDS_ASSERT		= 102,	/* PreWDS assert */
+	ETDSC_PSMAS_SENSORC_CX_WRONG_TX_CHAIN	= 103,	/* TX attempted with inhibited TX Chain */
+} etd_subcode_psmassert_t;
+
+/* sub codes corresponding to TAG_TRAP_ERR_ATTN. This is of the format:
+ *  31.........16		15 ........ 0
+ *  wlan err attn codes		cmn err attn codes
+ */
+#define ETDSC_ERR_ATTN_CMN_MASK				(0xFFFFu)
+#define ETDSC_ERR_ATTN_CMN_SHIFT			(0x0u)
+#define ETDSC_ERR_ATTN_FN0_MASK				(0xFFFF0000u)
+#define ETDSC_ERR_ATTN_FN0_SHIFT			(0x16u)
+
+/* cmn */
+#define ETDSC_PCIE_ERR_ATTN_CMN_UNKNOWNTYPE		(0x1u << 9u)	/* Unknown Header Type err
+									 * at User Tx Detected.
+									 */
+#define ETDSC_PCIE_ERR_ATTN_CMN_BOUNDARY4K		(0x1u << 8u)	/* boundary cross
+									 * violation
+									 */
+#define ETDSC_PCIE_ERR_ATTN_CMN_MRRS			(0x1u << 7u)	/* MRRS violation Error */
+#define ETDSC_PCIE_ERR_ATTN_CMN_MPS			(0x1u << 6u)	/* Max Payload Size
+									 * Violation
+									 */
+#define ETDSC_PCIE_ERR_ATTN_CMN_TTX_BRIDGE_FORWARD	(0x1u << 5u)	/* UserIF violation */
+#define ETDSC_PCIE_ERR_ATTN_CMN_TTX_TXINTF_OVERFLOW	(0x1u << 4u)	/* Too many requests made
+									 * at User tx without
+									 * waiting for Ack.
+									 */
+#define ETDSC_PCIE_ERR_ATTN_CMN_PHY			(0x1u << 3u)	/* PL LayerErr detected */
+#define ETDSC_PCIE_ERR_ATTN_CMN_DL			(0x1u << 2u)	/* DL layerErr detected */
+#define ETDSC_PCIE_ERR_ATTN_CMN_TTX_TAG_IN_USE		(0x1u << 1u)	/* Tx Read req resuing a
+									 * Tag that has not yet
+									 * been completed.
+									 */
+#define ETDSC_PCIE_ERR_ATTN_CMN_TRX_UNEXP_RTAG		(0x1u << 0u)	/* Tx Completion req
+									 * providing
+									 * an Rtag that is wrong.
+									 */
+
+/* wlan */
+#define ETDSC_PCIE_ERR_ATTN_WLAN_TTX_REQ_DURING_D3	(0x1u << 10u)	/* wlan tx req even though
+									 * in non-D0 state.
+									 */
+#define ETDSC_PCIE_ERR_ATTN_WLAN_PRI_SIG_TARGET_ABORT	(0x1u << 9u)	/* targetAbortError Status
+									 * for wlan.
+									 */
+#define ETDSC_PCIE_ERR_ATTN_WLAN_UNSPPORT		(0x1u << 8u)	/* Unsupported Req Err */
+#define ETDSC_PCIE_ERR_ATTN_WLAN_ECRC			(0x1u << 7u)	/* ECRC Error TLP */
+#define ETDSC_PCIE_ERR_ATTN_WLAN_MALF_TLP		(0x1u << 6u)	/* Malformed TLP */
+#define ETDSC_PCIE_ERR_ATTN_WLAN_RX_OFLOW		(0x1u << 5u)	/* Receiver Overflow */
+#define ETDSC_PCIE_ERR_ATTN_WLAN_UNEXP_CPL		(0x1u << 4u)	/* Unexpected Completion */
+#define ETDSC_PCIE_ERR_ATTN_WLAN_MASTER_ABRT		(0x1u << 3u)	/* Receive UR Completion */
+#define ETDSC_PCIE_ERR_ATTN_WLAN_CPL_TIMEOUT		(0x1u << 2u)	/* Completer Timeout. */
+#define ETDSC_PCIE_ERR_ATTN_WLAN_FC_PRTL		(0x1u << 1u)	/* Flow Control Prot Err */
+#define ETDSC_PCIE_ERR_ATTN_WLAN_PSND_TLP		(0x1u << 0u)	/* Poisoned Err Status */
 
 typedef struct hnd_ext_trap_bp_err
 {
@@ -681,7 +770,7 @@ void etd_set_trap_ext_swflag(uint32 flag);
 void etd_notify_trap_ext_callback(trap_t *tr);
 reg_dump_config_t *etd_get_reg_dump_config_tbl(void);
 uint etd_get_reg_dump_config_len(void);
-
+void BCMPOSTTRAPFN(etd_write_trap_reason_subcode)(uint32 tsc);
 extern bool _etd_enab;
 
 #if defined(ROM_ENAB_RUNTIME_CHECK)

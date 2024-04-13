@@ -4,7 +4,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -1006,7 +1006,7 @@ enum {
 #endif /* CUSTOMER_HW4 */
 #endif /* !DHD_COMMON_DUMP_PATH */
 
-#define DHD_MEMDUMP_LONGSTR_LEN 180
+#define DHD_MEMDUMP_LONGSTR_LEN 192u
 
 struct cntry_locales_custom {
 	char iso_abbrev[WLC_CNTRY_BUF_SZ];      /* ISO 3166-1 country abbreviation */
@@ -1651,6 +1651,7 @@ typedef struct dhd_pub {
 #ifdef DHD_COREDUMP
 	uint8 *coredump_mem;
 	uint32 coredump_len;
+	uint8 ewp_init_state;
 	char memdump_str[DHD_MEMDUMP_LONGSTR_LEN];
 #endif /* DHD_COREDUMP */
 #ifdef COEX_CPU

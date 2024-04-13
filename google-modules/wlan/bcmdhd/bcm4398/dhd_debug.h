@@ -1,7 +1,7 @@
 /*
  * DHD debugability header file
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -26,6 +26,7 @@
 #include <event_log.h>
 #include <bcmutils.h>
 #include <dhd_dbg_ring.h>
+#include <dhd_linux_pktdump.h>
 
 enum {
 	/* Feature set */
@@ -685,19 +686,25 @@ typedef struct dhd_dbg_rx_report
 
 typedef void (*dbg_pullreq_t)(void *os_priv, const int ring_id);
 typedef void (*dbg_urgent_noti_t) (dhd_pub_t *dhdp, const void *data, const uint32 len);
-typedef int (*dbg_mon_tx_pkts_t) (dhd_pub_t *dhdp, void *pkt, uint32 pktid,
+typedef int (*dbg_mon_tx_pkts_t) (dhd_pub_t *dhdp, int ifidx, void *pkt, uint32 pktid,
 	frame_type type, uint8 mgmt_acked, bool aml);
-typedef int (*dbg_mon_tx_status_t) (dhd_pub_t *dhdp, void *pkt,
+typedef int (*dbg_mon_tx_status_t) (dhd_pub_t *dhdp, int ifidx, void *pkt,
 	uint32 pktid, uint16 status);
-typedef int (*dbg_mon_rx_pkts_t) (dhd_pub_t *dhdp, void *pkt, frame_type type, bool aml);
+typedef int (*dbg_mon_rx_pkts_t) (dhd_pub_t *dhdp, int ifidx, void *pkt, frame_type type, bool aml);
+
+#ifdef DHD_PKT_MON_DUAL_STA
+#define PKT_MON_IF_MAX 2u
+#else
+#define PKT_MON_IF_MAX 1u
+#endif /* DHD_PKT_MON_DUAL_STA */
 
 typedef struct dhd_dbg_pkt_mon
 {
-	dhd_dbg_tx_report_t *tx_report;
-	dhd_dbg_rx_report_t *rx_report;
-	dhd_dbg_pkt_mon_state_t tx_pkt_state;
-	dhd_dbg_pkt_mon_state_t tx_status_state;
-	dhd_dbg_pkt_mon_state_t rx_pkt_state;
+	dhd_dbg_tx_report_t *tx_report[PKT_MON_IF_MAX];
+	dhd_dbg_rx_report_t *rx_report[PKT_MON_IF_MAX];
+	dhd_dbg_pkt_mon_state_t tx_pkt_state[PKT_MON_IF_MAX];
+	dhd_dbg_pkt_mon_state_t tx_status_state[PKT_MON_IF_MAX];
+	dhd_dbg_pkt_mon_state_t rx_pkt_state[PKT_MON_IF_MAX];
 
 	/* call backs */
 	dbg_mon_tx_pkts_t tx_pkt_mon;
@@ -743,32 +750,65 @@ typedef struct dhd_dbg {
 		(((status_count) >= (pkt_count)) || ((status_count) >= MAX_FATE_LOG_LEN))
 
 #ifdef DBG_PKT_MON
+#ifdef DHD_PKT_MON_DUAL_STA
+#define DHD_DBG_PKT_MON_TX(dhdp, ifidx, pkt, pktid, type, mgmt_acked, aml) \
+	do { \
+		if ((dhdp) && (dhdp)->dbg && (dhdp)->dbg->pkt_mon.tx_pkt_mon && \
+			(pkt) && (ifidx < PKT_MON_IF_MAX)) {                    \
+			(dhdp)->dbg->pkt_mon.tx_pkt_mon((dhdp), (ifidx), (pkt), \
+			(pktid), (type), (mgmt_acked), (aml)); \
+		} \
+	} while (0);
+#define DHD_DBG_PKT_MON_TX_STATUS(dhdp, ifidx, pkt, pktid, status) \
+	do { \
+		if ((dhdp) && (dhdp)->dbg && (dhdp)->dbg->pkt_mon.tx_status_mon && \
+			(pkt) && (ifidx < PKT_MON_IF_MAX)) {                       \
+			(dhdp)->dbg->pkt_mon.tx_status_mon((dhdp), (ifidx), (pkt), \
+			(pktid), (status)); \
+		} \
+	} while (0);
+#define DHD_DBG_PKT_MON_RX(dhdp, ifidx, pkt, type, aml) \
+	do { \
+		if ((dhdp) && (dhdp)->dbg && (dhdp)->dbg->pkt_mon.rx_pkt_mon && \
+			(pkt) && (ifidx < PKT_MON_IF_MAX)) {                    \
+			if (ntoh16((pkt)->protocol) != ETHER_TYPE_BRCM) { \
+				(dhdp)->dbg->pkt_mon.rx_pkt_mon((dhdp), (ifidx), (pkt), \
+				(type), (aml)); \
+			} \
+		} \
+	} while (0);
+#define DHD_DBG_PKT_MON_START(dhdp, ifidx) \
+		dhd_os_dbg_start_pkt_monitor((dhdp), (ifidx));
+#define DHD_DBG_PKT_MON_STOP(dhdp, ifidx) \
+		dhd_os_dbg_stop_pkt_monitor((dhdp), (ifidx));
+#else /* DHD_PKT_MON_DUAL_STA */
 #define DHD_DBG_PKT_MON_TX(dhdp, pkt, pktid, type, mgmt_acked, aml) \
 	do { \
 		if ((dhdp) && (dhdp)->dbg && (dhdp)->dbg->pkt_mon.tx_pkt_mon && (pkt)) { \
-			(dhdp)->dbg->pkt_mon.tx_pkt_mon((dhdp), (pkt), \
+			(dhdp)->dbg->pkt_mon.tx_pkt_mon((dhdp), 0, (pkt), \
 			(pktid), (type), (mgmt_acked), (aml)); \
 		} \
 	} while (0);
 #define DHD_DBG_PKT_MON_TX_STATUS(dhdp, pkt, pktid, status) \
 	do { \
 		if ((dhdp) && (dhdp)->dbg && (dhdp)->dbg->pkt_mon.tx_status_mon && (pkt)) { \
-			(dhdp)->dbg->pkt_mon.tx_status_mon((dhdp), (pkt), (pktid), (status)); \
+			(dhdp)->dbg->pkt_mon.tx_status_mon((dhdp), 0, (pkt), (pktid), (status)); \
 		} \
 	} while (0);
 #define DHD_DBG_PKT_MON_RX(dhdp, pkt, type, aml) \
 	do { \
 		if ((dhdp) && (dhdp)->dbg && (dhdp)->dbg->pkt_mon.rx_pkt_mon && (pkt)) { \
 			if (ntoh16((pkt)->protocol) != ETHER_TYPE_BRCM) { \
-				(dhdp)->dbg->pkt_mon.rx_pkt_mon((dhdp), (pkt), (type), (aml)); \
+				(dhdp)->dbg->pkt_mon.rx_pkt_mon((dhdp), 0, (pkt), (type), (aml)); \
 			} \
 		} \
 	} while (0);
 
 #define DHD_DBG_PKT_MON_START(dhdp) \
-		dhd_os_dbg_start_pkt_monitor((dhdp));
+		dhd_os_dbg_start_pkt_monitor((dhdp), 0);
 #define DHD_DBG_PKT_MON_STOP(dhdp) \
-		dhd_os_dbg_stop_pkt_monitor((dhdp));
+		dhd_os_dbg_stop_pkt_monitor((dhdp), 0);
+#endif /* DHD_PKT_MON_DUAL_STA */
 #else
 #define DHD_DBG_PKT_MON_TX(dhdp, pkt, pktid, type, mgmt_acked, aml)
 #define DHD_DBG_PKT_MON_TX_STATUS(dhdp, pkt, pktid, status)
@@ -884,26 +924,29 @@ void dhd_dbg_read_ring_into_trace_buf(dhd_dbg_ring_t *ring, trace_buf_info_t *tr
 #endif /* SHOW_LOGTRACE */
 
 #ifdef DBG_PKT_MON
-extern int dhd_dbg_attach_pkt_monitor(dhd_pub_t *dhdp,
+extern int dhd_dbg_attach_pkt_monitor(dhd_pub_t *dhdp, int ifidx,
 		dbg_mon_tx_pkts_t tx_pkt_mon,
 		dbg_mon_tx_status_t tx_status_mon,
 		dbg_mon_rx_pkts_t rx_pkt_mon);
-extern int dhd_dbg_start_pkt_monitor(dhd_pub_t *dhdp);
-extern int dhd_dbg_monitor_tx_pkts(dhd_pub_t *dhdp, void *pkt,
+extern int dhd_dbg_start_pkt_monitor(dhd_pub_t *dhdp, int ifidx);
+extern int dhd_dbg_monitor_tx_pkts(dhd_pub_t *dhdp, int ifidx, void *pkt,
 		uint32 pktid, frame_type type, uint8 mgmt_acked, bool aml);
-extern int dhd_dbg_monitor_tx_status(dhd_pub_t *dhdp, void *pkt,
+extern int dhd_dbg_monitor_tx_status(dhd_pub_t *dhdp, int ifidx, void *pkt,
 		uint32 pktid, uint16 status);
-extern int dhd_dbg_monitor_rx_pkts(dhd_pub_t *dhdp, void *pkt, frame_type type,
+extern int dhd_dbg_monitor_rx_pkts(dhd_pub_t *dhdp, int ifidx, void *pkt, frame_type type,
 		bool aml);
-extern int dhd_dbg_stop_pkt_monitor(dhd_pub_t *dhdp);
-extern int dhd_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp, void __user *user_buf,
+extern int dhd_dbg_stop_pkt_monitor(dhd_pub_t *dhdp, int ifidx);
+extern int dhd_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp, int ifidx, void __user *user_buf,
 		uint16 req_count, uint16 *resp_count);
-extern int dhd_dbg_monitor_get_rx_pkts(dhd_pub_t *dhdp, void __user *user_buf,
+extern int dhd_dbg_monitor_get_rx_pkts(dhd_pub_t *dhdp, int ifidx, void __user *user_buf,
 		uint16 req_count, uint16 *resp_count);
-extern int dhd_dbg_detach_pkt_monitor(dhd_pub_t *dhdp);
+extern int dhd_dbg_detach_pkt_monitor(dhd_pub_t *dhdp, int ifidx);
+extern void dhd_dbg_monitor_mgmt_str(uint8 subtype, char *buf, uint32 buflen);
+extern void dhd_dbg_monitor_eapol_str(msg_eapol_t type, char *buf, uint32 buflen);
+extern void dhd_dbg_monitor_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx);
 #endif /* DBG_PKT_MON */
 
-extern bool dhd_dbg_process_tx_status(dhd_pub_t *dhdp, void *pkt,
+extern bool dhd_dbg_process_tx_status(dhd_pub_t *dhdp, int ifidx, void *pkt,
 		uint32 pktid, uint16 status);
 
 /* os wrapper function */
@@ -928,18 +971,26 @@ extern int dhd_os_dbg_get_feature(dhd_pub_t *dhdp, int32 *features);
 
 #ifdef DBG_PKT_MON
 extern int dhd_os_dbg_attach_pkt_monitor(dhd_pub_t *dhdp);
-extern int dhd_os_dbg_start_pkt_monitor(dhd_pub_t *dhdp);
-extern int dhd_os_dbg_monitor_tx_pkts(dhd_pub_t *dhdp, void *pkt,
+extern int dhd_os_dbg_start_pkt_monitor(dhd_pub_t *dhdp, int ifidx);
+extern int dhd_os_dbg_monitor_tx_pkts(dhd_pub_t *dhdp, int ifidx, void *pkt,
 	uint32 pktid, frame_type type, uint8 mgmt_acked, bool aml);
-extern int dhd_os_dbg_monitor_tx_status(dhd_pub_t *dhdp, void *pkt,
+extern int dhd_os_dbg_monitor_tx_status(dhd_pub_t *dhdp, int ifidx, void *pkt,
 	uint32 pktid, uint16 status);
-extern int dhd_os_dbg_monitor_rx_pkts(dhd_pub_t *dhdp, void *pkt,
+extern int dhd_os_dbg_monitor_rx_pkts(dhd_pub_t *dhdp, int ifidx, void *pkt,
 	frame_type type, bool aml);
-extern int dhd_os_dbg_stop_pkt_monitor(dhd_pub_t *dhdp);
+extern int dhd_os_dbg_stop_pkt_monitor(dhd_pub_t *dhdp, int ifidx);
+#ifdef DHD_PKT_MON_DUAL_STA
+extern int dhd_os_dbg_attach_pkt_monitor_dev(dhd_pub_t *dhdp, struct net_device *ndev);
+extern int dhd_os_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp, int ifidx,
+	void __user *user_buf, uint16 req_count, uint16 *resp_count);
+extern int dhd_os_dbg_monitor_get_rx_pkts(dhd_pub_t *dhdp, int ifidx,
+	void __user *user_buf, uint16 req_count, uint16 *resp_count);
+#else
 extern int dhd_os_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp,
 	void __user *user_buf, uint16 req_count, uint16 *resp_count);
 extern int dhd_os_dbg_monitor_get_rx_pkts(dhd_pub_t *dhdp,
 	void __user *user_buf, uint16 req_count, uint16 *resp_count);
+#endif /* DHD_PKT_MON_DUAL_STA */
 extern int dhd_os_dbg_detach_pkt_monitor(dhd_pub_t *dhdp);
 #endif /* DBG_PKT_MON */
 

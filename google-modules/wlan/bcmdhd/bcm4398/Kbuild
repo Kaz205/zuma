@@ -1,6 +1,6 @@
 # bcmdhd
 #
-# Copyright (C) 2023, Broadcom.
+# Copyright (C) 2024, Broadcom.
 #
 #      Unless you and Broadcom execute a separate written software license
 # agreement governing use of this software, this software is licensed to you
@@ -660,7 +660,7 @@ DHDCFLAGS += -DNDO_CONFIG_SUPPORT
 DHDCFLAGS += -DIPV6_NDO_SUPPORT
 
 #Debugaility
-DHDCFLAGS += -DDBG_PKT_MON -DDBG_PKT_MON_INIT_DEFAULT
+DHDCFLAGS += -DDBG_PKT_MON -DDBG_PKT_MON_INIT_DEFAULT -DDHD_PKT_MON_DUAL_STA
 DHDCFLAGS += -DDNGL_EVENT_SUPPORT -DPARSE_DONGLE_HOST_EVENT
 DHDCFLAGS += -DWL_CFGVENDOR_SEND_ALERT_EVENT
 
