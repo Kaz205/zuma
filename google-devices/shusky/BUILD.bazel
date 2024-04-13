@@ -7,6 +7,7 @@ load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
 load("//build/kernel/kleaf:constants.bzl", "aarch64_outs")
 load(
     "//build/kernel/kleaf:kernel.bzl",
+    "gki_artifacts",
     "kernel_abi",
     "kernel_build",
     "kernel_images",
@@ -15,7 +16,6 @@ load(
     "kernel_unstripped_modules_archive",
     "merged_kernel_uapi_headers",
 )
-load("//build/kernel/kleaf/impl:gki_artifacts.bzl", "gki_artifacts")
 load(
     "//private/google-modules/soc/gs:device_build_configs.bzl",
     "device_build_configs",
@@ -190,7 +190,7 @@ kernel_module_group(
         "//private/google-modules/touch/goodix",
         "//private/google-modules/touch/sec",
         "//private/google-modules/trusty",
-        "//private/google-modules/uwb:uwb.qm35",
+        "//private/google-modules/uwb/qorvo/qm35/qm35s:uwb.qm35",
         "//private/google-modules/video/gchips:video.gchips",
         "//private/google-modules/wlan/bcm4398:bcmdhd4398",
         "//private/google-modules/wlan/wlan_ptracker",
@@ -281,12 +281,7 @@ lto_dependant_kernel_module(
         "drivers/clk/gs/clk_exynos_gs.ko",
         "drivers/clocksource/exynos_mct_v3.ko",
         "drivers/cpufreq/exynos-acme.ko",
-        "drivers/devfreq/google/arm-memlat-mon.ko",
-        "drivers/devfreq/google/dsulat-devfreq.ko",
         "drivers/devfreq/google/exynos_devfreq.ko",
-        "drivers/devfreq/google/governor_dsulat.ko",
-        "drivers/devfreq/google/governor_memlat.ko",
-        "drivers/devfreq/google/memlat-devfreq.ko",
         "drivers/dma-buf/heaps/samsung/samsung_dma_heap.ko",
         "drivers/dma/pl330.ko",
         "drivers/dma/samsung-dma.ko",
@@ -314,6 +309,10 @@ lto_dependant_kernel_module(
         "drivers/misc/sscoredump/sscoredump.ko",
         "drivers/pci/controller/dwc/pcie-exynos-gs.ko",
         "drivers/pci/controller/dwc/pcie-exynos-zuma-rc-cal.ko",
+        "drivers/performance/gs_perf_mon/gs_perf_mon.ko",
+        "drivers/performance/lat_governors/gs_governor_dsulat.ko",
+        "drivers/performance/lat_governors/gs_governor_memlat.ko",
+        "drivers/performance/lat_governors/gs_governor_utils.ko",
         "drivers/phy/samsung/eusb_repeater.ko",
         "drivers/phy/samsung/phy-exynos-mipi.ko",
         "drivers/phy/samsung/phy-exynos-mipi-dsim.ko",

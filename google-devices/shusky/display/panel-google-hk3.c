@@ -323,7 +323,7 @@ static const struct drm_dsc_config fhd_pps_config = {
 #define HK3_TE_USEC_AOD 693
 #define HK3_TE_USEC_120HZ 273
 #define HK3_TE_USEC_60HZ_HS 8500
-#define HK3_TE_USEC_60HZ_NS 546
+#define HK3_TE_USEC_60HZ_NS 1223
 #define HK3_TE_PERIOD_DELTA_TOLERANCE_USEC 2000
 
 #define MIPI_DSI_FREQ_DEFAULT 1368
@@ -584,13 +584,24 @@ static void hk3_set_panel_feat(struct exynos_panel *ctx,
 			EXYNOS_DCS_BUF_ADD(ctx, 0xB0, 0x00, 0x02, 0xB9);
 			val = test_bit(FEAT_OP_NS, feat) ? 0x01 : 0x00;
 			EXYNOS_DCS_BUF_ADD(ctx, 0xB9, val);
+			/* Fixed TE width setting */
+			EXYNOS_DCS_BUF_ADD(ctx, 0xB0, 0x00, 0x08, 0xB9);
+			if (test_bit(FEAT_OP_NS, feat)) {
+				EXYNOS_DCS_BUF_ADD(ctx, 0xB9, 0x0B, 0x43, 0x00, 0x2F,
+					0x0B, 0x43, 0x00, 0x2F);
+			} else {
+				EXYNOS_DCS_BUF_ADD(ctx, 0xB9, 0x0B, 0xBB, 0x00, 0x2F,
+					0x0B, 0xBB, 0x00, 0x2F);
+			}
 		} else {
 			/* Changeable TE */
 			EXYNOS_DCS_BUF_ADD(ctx, 0xB9, 0x04);
 			/* Changeable TE width setting and frequency */
 			EXYNOS_DCS_BUF_ADD(ctx, 0xB0, 0x00, 0x04, 0xB9);
-			/* width 273us in normal mode */
-			EXYNOS_DCS_BUF_ADD(ctx, 0xB9, 0x0B, 0xBB, 0x00, 0x2F);
+			if (test_bit(FEAT_OP_NS, feat))
+				EXYNOS_DCS_BUF_ADD(ctx, 0xB9, 0x0B, 0x43, 0x00, 0x2F);
+			else
+				EXYNOS_DCS_BUF_ADD(ctx, 0xB9, 0x0B, 0xBB, 0x00, 0x2F);
 		}
 	}
 
@@ -892,6 +903,7 @@ static void hk3_update_refresh_mode(struct exynos_panel *ctx,
 	 */
 	if (ctx->mode_in_progress == MODE_RES_IN_PROGRESS) {
 		dev_dbg(ctx->dev, "%s: RRS in progress without RR change, skip\n", __func__);
+		notify_panel_mode_changed(ctx, false);
 		return;
 	}
 
@@ -919,7 +931,7 @@ static void hk3_update_refresh_mode(struct exynos_panel *ctx,
 	ctx->panel_idle_vrefresh = idle_vrefresh;
 	hk3_update_panel_feat(ctx, vrefresh, false);
 
-	schedule_work(&ctx->state_notify);
+	notify_panel_mode_changed(ctx, false);
 
 	dev_dbg(ctx->dev, "%s: display state is notified\n", __func__);
 }
@@ -931,6 +943,9 @@ static void hk3_change_frequency(struct exynos_panel *ctx,
 	u32 idle_vrefresh = 0;
 
 	if (vrefresh > ctx->op_hz) {
+		/* resolution may has been changed but refresh rate */
+		if (ctx->mode_in_progress == MODE_RES_AND_RR_IN_PROGRESS)
+			notify_panel_mode_changed(ctx, false);
 		dev_err(ctx->dev,
 		"invalid freq setting: op_hz=%u, vrefresh=%u\n",
 		ctx->op_hz, vrefresh);
@@ -1028,7 +1043,7 @@ static bool hk3_set_self_refresh(struct exynos_panel *ctx, bool enable)
 	if (pmode->exynos_mode.is_lp_mode) {
 		/* set 1Hz while self refresh is active, otherwise clear it */
 		ctx->panel_idle_vrefresh = enable ? 1 : 0;
-		schedule_work(&ctx->state_notify);
+		notify_panel_mode_changed(ctx, true);
 		return false;
 	}
 
@@ -1714,15 +1729,19 @@ static int hk3_enable(struct drm_panel *panel)
 		exynos_panel_wait_for_vsync_done(ctx, te_width_us,
 			EXYNOS_VREFRESH_TO_PERIOD_USEC(ctx->last_rr));
 	}
-	PANEL_SEQ_LABEL_BEGIN("init");
+
 	/* DSC related configuration */
+	PANEL_SEQ_LABEL_BEGIN("pps");
 	drm_dsc_pps_payload_pack(&pps_payload,
 				 is_fhd ? &fhd_pps_config : &wqhd_pps_config);
 	EXYNOS_DCS_WRITE_SEQ(ctx, 0x9D, 0x01);
 	EXYNOS_PPS_WRITE_BUF(ctx, &pps_payload);
+	PANEL_SEQ_LABEL_END("pps");
 
 	if (needs_reset) {
+		PANEL_SEQ_LABEL_BEGIN("init_cmd");
 		exynos_panel_send_cmd_set(ctx, &hk3_init_cmd_set);
+		PANEL_SEQ_LABEL_END("init_cmd");
 		if (ctx->panel_rev == PANEL_REV_PROTO1)
 			hk3_lhbm_luminance_opr_setting(ctx);
 		if (ctx->panel_rev >= PANEL_REV_DVT1)
@@ -1731,7 +1750,6 @@ static int hk3_enable(struct drm_panel *panel)
 		spanel->is_pixel_off = false;
 		ctx->dsi_hs_clk = MIPI_DSI_FREQ_DEFAULT;
 	}
-	PANEL_SEQ_LABEL_END("init");
 
 	EXYNOS_DCS_BUF_ADD_SET(ctx, unlock_cmd_f0);
 	EXYNOS_DCS_BUF_ADD(ctx, 0xC3, is_fhd ? 0x0D : 0x0C);
@@ -2186,6 +2204,18 @@ static const struct exynos_display_underrun_param underrun_param = {
 
 static const u32 hk3_bl_range[] = {
 	94, 180, 270, 360, 3307
+};
+
+static const int hk3_vrefresh_range[] = {
+#ifdef PANEL_FACTORY_BUILD
+	1, 5, 10, 30, 60, 120
+#else
+	1, 10, 30, 60, 120
+#endif
+};
+
+static const int hk3_lp_vrefresh_range[] = {
+	1, 30
 };
 
 #define HK3_WQHD_DSC {\
@@ -2752,8 +2782,12 @@ const struct exynos_panel_desc google_hk3 = {
 	.bl_num_ranges = ARRAY_SIZE(hk3_bl_range),
 	.modes = hk3_modes,
 	.num_modes = ARRAY_SIZE(hk3_modes),
+	.vrefresh_range = hk3_vrefresh_range,
+	.vrefresh_range_count = ARRAY_SIZE(hk3_vrefresh_range),
 	.lp_mode = hk3_lp_modes,
 	.lp_mode_count = ARRAY_SIZE(hk3_lp_modes),
+	.lp_vrefresh_range = hk3_lp_vrefresh_range,
+	.lp_vrefresh_range_count = ARRAY_SIZE(hk3_lp_vrefresh_range),
 	.binned_lp = hk3_binned_lp,
 	.num_binned_lp = ARRAY_SIZE(hk3_binned_lp),
 	.is_panel_idle_supported = true,
