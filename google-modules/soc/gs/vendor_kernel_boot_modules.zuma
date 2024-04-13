@@ -77,6 +77,10 @@ governor_memlat.ko
 gpu_cooling.ko
 gs-chipid.ko
 gs_acpm.ko
+gs_governor_dsulat.ko
+gs_governor_memlat.ko
+gs_governor_utils.ko
+gs_perf_mon.ko
 pixel_metrics.ko
 gs_thermal.ko
 gsa.ko
@@ -101,6 +105,7 @@ max77759-charger.ko
 max77759_contaminant.ko
 max77759_helper.ko
 max77779-charger.ko
+max77779-fg.ko
 max77779-sp.ko
 max77779_i2cm.ko
 max77779_pmic.ko

@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -735,44 +735,45 @@ do {									\
  * It exceed the original 1024 limitation
  * so change WL_EXTRA_LEN_MAX to 2048
  */
-#define WL_IOCTL_LEN_MAX        2048
-#define WL_EXTRA_BUF_MAX        2048
-#define WL_SCAN_ERSULTS_LAST    (WL_SCAN_RESULTS_NO_MEM+1)
-#define WL_AP_MAX			    256
-#define WL_FILE_NAME_MAX        256
-#define WL_DEFAULT_DWELL_TIME   200
-#define WL_MED_DWELL_TIME       400
-#define WL_MIN_DWELL_TIME       100
-#define WL_LONG_DWELL_TIME      1000
+#define WL_IOCTL_LEN_MAX			2048u
+#define WL_EXTRA_BUF_MAX			2048u
+#define WL_SCAN_ERSULTS_LAST			(WL_SCAN_RESULTS_NO_MEM+1)
+#define WL_AP_MAX				256u
+#define WL_FILE_NAME_MAX			256u
+#define WL_DEFAULT_DWELL_TIME			200u
+#define WL_MED_DWELL_TIME			400u
+#define WL_MIN_DWELL_TIME			100u
+#define WL_GAS_IRESP_DWELL_TIME			200u
+#define WL_LONG_DWELL_TIME			1000u
 #ifdef WL_MLO
-#define IFACE_MAX_CNT           7
+#define IFACE_MAX_CNT				7u
 #else
-#define IFACE_MAX_CNT           5
+#define IFACE_MAX_CNT				5u
 #endif /* WL_MLO */
-#define WL_SCAN_CONNECT_DWELL_TIME_MS		100
-#define WL_SCAN_JOIN_PROBE_INTERVAL_MS		20
-#define WL_SCAN_JOIN_ACTIVE_DWELL_TIME_MS	320
-#define WL_BCAST_SCAN_JOIN_ACTIVE_DWELL_TIME_MS	80
-#define WL_SCAN_JOIN_PASSIVE_DWELL_TIME_MS	400
-#define WL_AF_TX_MAX_RETRY	5
-#define WL_AF_TX_MIN_RETRY	3
+#define WL_SCAN_CONNECT_DWELL_TIME_MS		100u
+#define WL_SCAN_JOIN_PROBE_INTERVAL_MS		20u
+#define WL_SCAN_JOIN_ACTIVE_DWELL_TIME_MS	320u
+#define WL_BCAST_SCAN_JOIN_ACTIVE_DWELL_TIME_MS	80u
+#define WL_SCAN_JOIN_PASSIVE_DWELL_TIME_MS	400u
+#define WL_AF_TX_MAX_RETRY			5u
+#define WL_AF_TX_MIN_RETRY			3u
 
-#define WL_AF_SEARCH_TIME_MAX		450
-#define WL_AF_TX_EXTRA_TIME_MAX		200
+#define WL_AF_SEARCH_TIME_MAX			450u
+#define WL_AF_TX_EXTRA_TIME_MAX			200u
 
-#define WL_SCAN_TIMER_INTERVAL_MS	10000 /* Scan timeout */
+#define WL_SCAN_TIMER_INTERVAL_MS		10000u /* Scan timeout */
 
 /* For devices in non-rsdb mode , need to add 2G scan time also */
 #define WL_SCAN_TIMER_INTERVAL_MS_NON_RSDB	2000u
-#define WL_RSDB_MODE_MIMO	0
-#define WL_RSDB_MODE_RSDB	1u
+#define WL_RSDB_MODE_MIMO			0u
+#define WL_RSDB_MODE_RSDB			1u
 
 #ifdef WL_NAN
-#define WL_SCAN_TIMER_INTERVAL_MS_NAN	15000 /* Scan timeout */
+#define WL_SCAN_TIMER_INTERVAL_MS_NAN		15000u /* Scan timeout */
 #endif /* WL_NAN */
 #ifdef WL_6G_BAND
 /* additional scan timeout for 6GHz, 6000msec */
-#define WL_SCAN_TIMER_INTERVAL_MS_6G	6000
+#define WL_SCAN_TIMER_INTERVAL_MS_6G		6000u
 
 #define CHSPEC_TO_WLC_BAND(chspec) (CHSPEC_IS2G(chspec) ? WLC_BAND_2G : CHSPEC_IS5G(chspec) ? \
 	WLC_BAND_5G : WLC_BAND_6G)
@@ -947,16 +948,17 @@ entry = container_of((ptr), type, member); \
 
 /* DPP Public Action Frame types */
 enum wl_dpp_ftype {
-    DPP_AUTH_REQ = 0,
-    DPP_AUTH_RESP = 1,
-    DPP_AUTH_CONF = 2,
-    DPP_PEER_DISC_REQ = 5,
-    DPP_PEER_DISC_RESP = 6,
-    DPP_PKEX_EX_REQ = 7,
-    DPP_PKEX_EX_RESP = 8,
-    DPP_PKEX_COMMIT_REVEAL_REQ = 9,
-    DPP_PKEX_COMMIT_REVEAL_RESP = 10,
-    DPP_CONFIGURATION_RESULT = 11
+    DPP_AUTH_REQ			= 0,
+    DPP_AUTH_RESP			= 1,
+    DPP_AUTH_CONF			= 2,
+    DPP_PEER_DISC_REQ			= 5,
+    DPP_PEER_DISC_RESP			= 6,
+    DPP_PKEX_EX_REQ			= 7,
+    DPP_PKEX_EX_RESP			= 8,
+    DPP_PKEX_COMMIT_REVEAL_REQ		= 9,
+    DPP_PKEX_COMMIT_REVEAL_RESP		= 10,
+    DPP_CONFIGURATION_RESULT		= 11,
+    DPP_CONFIGURATION_STATUS_RESULT	= 12
 };
 
 /* DPP Public Action Frame */
@@ -3757,7 +3759,7 @@ extern s32 wl_cfg80211_suspend(struct bcm_cfg80211 *cfg);
 #endif /* !OEM_ANDROID */
 bool wl_cfg80211_is_dpp_frame(void *frame, u32 frame_len);
 const char *get_dpp_pa_ftype(enum wl_dpp_ftype ftype);
-bool wl_cfg80211_is_dpp_gas_action(void *frame, u32 frame_len);
+bool wl_cfg80211_is_dpp_gas_action(void *frame, u32 frame_len, u8 *frame_type);
 extern bool wl_cfg80211_find_gas_subtype(u8 subtype, u16 adv_id, u8* data, s32 len);
 #ifdef ESCAN_CHANNEL_CACHE
 extern void update_roam_cache(struct bcm_cfg80211 *cfg, int ioctl_ver);

@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 Vendor Extension Code
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -9992,7 +9992,11 @@ static int wl_cfgvendor_dbg_start_pkt_fate_monitoring(struct wiphy *wiphy,
 	dhd_pub_t *dhd_pub = cfg->pub;
 	int ret;
 
+#ifdef DHD_PKT_MON_DUAL_STA
+	ret = dhd_os_dbg_attach_pkt_monitor_dev(dhd_pub, wdev_to_ndev(wdev));
+#else
 	ret = dhd_os_dbg_attach_pkt_monitor(dhd_pub);
+#endif /* DHD_PKT_MON_DUAL_STA */
 	if (unlikely(ret)) {
 		WL_ERR(("failed to start pkt fate monitoring, ret=%d", ret));
 	}
@@ -10000,11 +10004,21 @@ static int wl_cfgvendor_dbg_start_pkt_fate_monitoring(struct wiphy *wiphy,
 	return ret;
 }
 
+#ifdef DHD_PKT_MON_DUAL_STA
+typedef int (*dbg_mon_get_pkts_t) (dhd_pub_t *dhdp, int ifidx,
+	void __user *user_buf, uint16 req_count, uint16 *resp_count);
+#else
 typedef int (*dbg_mon_get_pkts_t) (dhd_pub_t *dhdp, void __user *user_buf,
 	uint16 req_count, uint16 *resp_count);
+#endif /* DHD_PKT_MON_DUAL_STA */
 
+#ifdef DHD_PKT_MON_DUAL_STA
+static int __wl_cfgvendor_dbg_get_pkt_fates(struct wiphy *wiphy, struct wireless_dev *wdev,
+	const void *data, int len, dbg_mon_get_pkts_t dbg_mon_get_pkts)
+#else
 static int __wl_cfgvendor_dbg_get_pkt_fates(struct wiphy *wiphy,
 	const void *data, int len, dbg_mon_get_pkts_t dbg_mon_get_pkts)
+#endif /* DHD_PKT_MON_DUAL_STA */
 {
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	dhd_pub_t *dhd_pub = cfg->pub;
@@ -10013,6 +10027,23 @@ static int __wl_cfgvendor_dbg_get_pkt_fates(struct wiphy *wiphy,
 	void __user *user_buf = NULL;
 	uint16 req_count = 0, resp_count = 0;
 	int ret, tmp, type, mem_needed;
+#ifdef DHD_PKT_MON_DUAL_STA
+	struct net_device *ndev = wdev_to_ndev(wdev);
+	int ifidx;
+
+	if (!ndev) {
+		WL_ERR(("ndev is null\n"));
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	ifidx = dhd_net2idx(dhd_pub->info, ndev);
+	if (ifidx == DHD_BAD_IF || ifidx >= PKT_MON_IF_MAX) {
+		WL_ERR(("invalid ifidx:%d\n", ifidx));
+		ret = -EINVAL;
+		goto exit;
+	}
+#endif /* DHD_PKT_MON_DUAL_STA */
 
 	nla_for_each_attr(iter, data, len, tmp) {
 		type = nla_type(iter);
@@ -10037,7 +10068,11 @@ static int __wl_cfgvendor_dbg_get_pkt_fates(struct wiphy *wiphy,
 		goto exit;
 	}
 
+#ifdef DHD_PKT_MON_DUAL_STA
+	ret = dbg_mon_get_pkts(dhd_pub, ifidx, user_buf, req_count, &resp_count);
+#else
 	ret = dbg_mon_get_pkts(dhd_pub, user_buf, req_count, &resp_count);
+#endif /* DHD_PKT_MON_DUAL_STA */
 	if (unlikely(ret)) {
 		WL_ERR(("failed to get packets, ret:%d \n", ret));
 		goto exit;
@@ -10076,8 +10111,13 @@ static int wl_cfgvendor_dbg_get_tx_pkt_fates(struct wiphy *wiphy,
 {
 	int ret;
 
+#ifdef DHD_PKT_MON_DUAL_STA
+	ret = __wl_cfgvendor_dbg_get_pkt_fates(wiphy, wdev, data, len,
+			dhd_os_dbg_monitor_get_tx_pkts);
+#else
 	ret = __wl_cfgvendor_dbg_get_pkt_fates(wiphy, data, len,
 			dhd_os_dbg_monitor_get_tx_pkts);
+#endif /* DHD_PKT_MON_DUAL_STA */
 	if (unlikely(ret)) {
 		WL_ERR(("failed to get tx packets, ret:%d \n", ret));
 	}
@@ -10090,8 +10130,13 @@ static int wl_cfgvendor_dbg_get_rx_pkt_fates(struct wiphy *wiphy,
 {
 	int ret;
 
+#ifdef DHD_PKT_MON_DUAL_STA
+	ret = __wl_cfgvendor_dbg_get_pkt_fates(wiphy, wdev, data, len,
+			dhd_os_dbg_monitor_get_rx_pkts);
+#else
 	ret = __wl_cfgvendor_dbg_get_pkt_fates(wiphy, data, len,
 			dhd_os_dbg_monitor_get_rx_pkts);
+#endif /* DHD_PKT_MON_DUAL_STA */
 	if (unlikely(ret)) {
 		WL_ERR(("failed to get rx packets, ret:%d \n", ret));
 	}

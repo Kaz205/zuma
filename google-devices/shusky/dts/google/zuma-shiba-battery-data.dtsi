@@ -57,8 +57,6 @@ maxim,config {
 		maxim,model-version = <6>;
 		maxim,force-reset-model-data;
 		maxim,rc1-tempco = /bits/ 16 <0x131f>;
-		maxim,rc2-tempco = /bits/ 16 <0x1202>;
-		maxim,rc2-learncfg = /bits/ 16 <0x260e>;
 		maxim,fg-model = /bits/ 16 <
 			0x9d30 0xb760 0xb960 0xbb70 0xbd10 0xbea0 0xbff0 0xc290
 			0xc4a0 0xc710 0xcb30 0xcd60 0xd300 0xd650 0xd970 0xdf40
@@ -104,8 +102,6 @@ maxim,config {
 		maxim,model-version = <5>;
 		maxim,force-reset-model-data;
 		maxim,rc1-tempco = /bits/ 16 <0x0b22>;
-		maxim,rc2-tempco = /bits/ 16 <0x1602>;
-		maxim,rc2-learncfg = /bits/ 16 <0x260e>;
 		maxim,fg-model = /bits/ 16 <
                         0xa170 0xb750 0xb890 0xba40 0xbbd0 0xbcd0 0xbf00 0xc080
                         0xc390 0xc7b0 0xcae0 0xce10 0xd190 0xd480 0xd780 0xdda0

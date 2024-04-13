@@ -1,7 +1,7 @@
 /*
  * Misc useful os-independent macros and functions.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you

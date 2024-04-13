@@ -114,6 +114,7 @@ enum gpu_dvfs_governor_type {
 	GPU_DVFS_GOVERNOR_QUICKSTEP,
 #if MALI_USE_CSF
 	GPU_DVFS_GOVERNOR_QUICKSTEP_USE_MCU,
+	GPU_DVFS_GOVERNOR_CAPACITY_USE_MCU,
 #endif
 	/* Insert new governors here */
 	GPU_DVFS_GOVERNOR_COUNT,

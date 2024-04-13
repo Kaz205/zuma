@@ -571,7 +571,7 @@ int teei_gen_stream_manage(uint16_t stream_num,
 
 	memcpy(seq_num_m, hci->genstrminfo.seq_num_m, HDCP_RP_SEQ_NUM_M_LEN);
 	memcpy(k, hci->genstrminfo.k, HDCP_RP_K_LEN);
-	memcpy(streamid_type, hci->genstrminfo.streamid_type, HDCP_RP_STREAMID_TYPE_LEN);
+	memcpy(streamid_type, hci->genstrminfo.streamid_type, HDCP_RP_MAX_STREAMID_TYPE_LEN);
 
 	/* check returned message from SWD */
 

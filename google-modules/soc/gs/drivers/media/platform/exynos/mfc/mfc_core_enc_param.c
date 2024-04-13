@@ -91,6 +91,28 @@ void mfc_core_set_enc_config_qp(struct mfc_core *core, struct mfc_ctx *ctx)
 	}
 }
 
+void mfc_core_set_enc_ts_delta(struct mfc_core *core, struct mfc_ctx *ctx)
+{
+	struct mfc_enc *enc = ctx->enc_priv;
+	struct mfc_enc_params *p = &enc->params;
+	unsigned int reg = 0;
+	int ts_delta;
+
+	ts_delta = mfc_enc_get_ts_delta(ctx);
+
+	reg = MFC_CORE_READL(MFC_REG_E_TIME_STAMP_DELTA);
+	reg &= ~(0xFFFF);
+	reg |= (ts_delta & 0xFFFF);
+	MFC_CORE_WRITEL(reg, MFC_REG_E_TIME_STAMP_DELTA);
+	if (ctx->ts_last_interval)
+		mfc_debug(3, "[DFR] fps %d -> %ld, delta: %d, reg: %#x\n",
+				p->rc_framerate, USEC_PER_SEC / ctx->ts_last_interval,
+				ts_delta, reg);
+	else
+		mfc_debug(3, "[DFR] fps %d -> 0, delta: %d, reg: %#x\n",
+				p->rc_framerate, ts_delta, reg);
+}
+
 static void __mfc_set_gop_size(struct mfc_core *core, struct mfc_ctx *ctx,
 		int ctrl_mode)
 {
@@ -413,12 +435,17 @@ static void __mfc_set_enc_params(struct mfc_core *core, struct mfc_ctx *ctx)
 	mfc_clear_set_bits(reg, 0x1, 9, p->rc_frame);
 	/* drop control */
 	mfc_clear_set_bits(reg, 0x1, 10, p->drop_control);
+	if (MFC_FEATURE_SUPPORT(dev, dev->pdata->enc_ts_delta))
+		mfc_clear_set_bits(reg, 0x1, 20, 1);
 	MFC_CORE_RAW_WRITEL(reg, MFC_REG_E_RC_CONFIG);
 
 	/*
-	 * frame rate
-	 * delta is timestamp diff
-	 * ex) 30fps: 33, 60fps: 16
+	 * Delta value for framerate is timestamp(ms * 10) diff.
+	 * ex) 30fps: 333, 60fps: 166
+	 * Resolution unit is most sophisticated value
+	 * that can be determined within 16bit.
+	 * F/W calculates fps through resolution / delta.
+	 * ex) 10000 / 166 = 60fps
 	 */
 	p->rc_frame_delta = p->rc_framerate_res / p->rc_framerate;
 	reg = MFC_CORE_RAW_READL(MFC_REG_E_RC_FRAME_RATE);
@@ -898,7 +925,7 @@ static void __mfc_set_enc_params_h263(struct mfc_core *core,
 	mfc_debug_enter();
 
 	/* For H.263 only 8 bit is used and maximum value can be 0xFF */
-	p->rc_framerate_res = 100;
+	p->rc_framerate_res = 255;
 	__mfc_set_enc_params(core, ctx);
 
 	/* set gop_size with I_FRM_CTRL mode */

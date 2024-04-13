@@ -351,14 +351,6 @@ void exynos_crtc_handle_event(struct exynos_drm_crtc *exynos_crtc)
 	spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
 }
 
-static void exynos_drm_crtc_destroy(struct drm_crtc *crtc)
-{
-	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-
-	drm_crtc_cleanup(crtc);
-	kfree(exynos_crtc);
-}
-
 static int exynos_drm_crtc_enable_vblank(struct drm_crtc *crtc)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
@@ -888,7 +880,6 @@ static int exynos_drm_crtc_late_register(struct drm_crtc *crtc)
 static const struct drm_crtc_funcs exynos_crtc_funcs = {
 	.set_config		= drm_atomic_helper_set_config,
 	.page_flip		= drm_atomic_helper_page_flip,
-	.destroy		= exynos_drm_crtc_destroy,
 	.reset			= exynos_drm_crtc_reset,
 	.atomic_duplicate_state	= exynos_drm_crtc_duplicate_state,
 	.atomic_destroy_state	= exynos_drm_crtc_destroy_state,
@@ -1160,22 +1151,19 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 	const struct decon_device *decon = ctx;
 	int ret;
 
-	exynos_crtc = kzalloc(sizeof(*exynos_crtc), GFP_KERNEL);
-	if (!exynos_crtc)
-		return ERR_PTR(-ENOMEM);
-
+	exynos_crtc =
+		drmm_crtc_alloc_with_planes(drm_dev, struct exynos_drm_crtc, base, plane, NULL,
+					    &exynos_crtc_funcs, "exynos-crtc-%u", decon->id);
+	if (IS_ERR(exynos_crtc)) {
+		ret = PTR_ERR(exynos_crtc);
+		goto err_crtc;
+	}
 	exynos_crtc->possible_type = type;
 	exynos_crtc->ops = ops;
 	exynos_crtc->ctx = ctx;
 	exynos_crtc->active_state = CRTC_STATE_INACTIVE;
 
 	crtc = &exynos_crtc->base;
-
-	ret = drm_crtc_init_with_planes(drm_dev, crtc, plane, NULL,
-					&exynos_crtc_funcs, "exynos-crtc-%u",
-					decon->id);
-	if (ret < 0)
-		goto err_crtc;
 
 	drm_crtc_helper_add(crtc, &exynos_crtc_helper_funcs);
 
@@ -1258,8 +1246,6 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 	return exynos_crtc;
 
 err_crtc:
-	plane->funcs->destroy(plane);
-	kfree(exynos_crtc);
 	return ERR_PTR(ret);
 }
 

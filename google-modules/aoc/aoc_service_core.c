@@ -37,7 +37,7 @@ ssize_t aoc_service_read_timeout(struct aoc_service_dev *dev, uint8_t *buffer,
 		return -ENODEV;
 
 	atomic_inc(&prvdata->aoc_process_active);
-	if (aoc_state != AOC_STATE_ONLINE || work_busy(&prvdata->watchdog_work)) {
+	if (aoc_state != AOC_STATE_ONLINE) {
 		ret = -EBUSY;
 		goto err;
 	}
@@ -132,7 +132,7 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 		return -EINVAL;
 
 	atomic_inc(&prvdata->aoc_process_active);
-	if (aoc_state != AOC_STATE_ONLINE || work_busy(&prvdata->watchdog_work)) {
+	if (aoc_state != AOC_STATE_ONLINE) {
 		ret = -EBUSY;
 		goto err;
 	}
@@ -223,7 +223,7 @@ ssize_t aoc_service_write_timeout(struct aoc_service_dev *dev, const uint8_t *bu
 		return -ENODEV;
 
 	atomic_inc(&prvdata->aoc_process_active);
-	if (aoc_state != AOC_STATE_ONLINE || work_busy(&prvdata->watchdog_work)) {
+	if (aoc_state != AOC_STATE_ONLINE) {
 		ret = -EBUSY;
 		goto err;
 	}
@@ -438,7 +438,7 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 		return -ENODEV;
 
 	atomic_inc(&prvdata->aoc_process_active);
-	if (aoc_state != AOC_STATE_ONLINE || work_busy(&prvdata->watchdog_work)) {
+	if (aoc_state != AOC_STATE_ONLINE) {
 		ret = -EBUSY;
 		goto err;
 	}
@@ -528,7 +528,7 @@ bool aoc_online_state(struct aoc_service_dev *dev)
 	if (!prvdata)
 		return false;
 
-	if (aoc_state != AOC_STATE_ONLINE || work_busy(&prvdata->watchdog_work))
+	if (aoc_state != AOC_STATE_ONLINE)
 		return false;
 	return true;
 }

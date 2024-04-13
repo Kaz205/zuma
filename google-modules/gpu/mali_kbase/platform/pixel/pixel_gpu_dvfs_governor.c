@@ -65,6 +65,43 @@ static int gpu_dvfs_governor_basic(struct kbase_device *kbdev,
 }
 
 /**
+ * level_for_capacity() - Find the lowest level satisfying a given needed capacity.
+ *
+ * @capacity:  The capacity desired, in whatever units the clocks for levels are in
+ * @tbl:       The DVFS operating points to choose from
+ * @dev:       The device node, for debug logs.
+ * @level_min: The index of the lowest allowable operating point
+ * @level_max: The index of the highest allowable operating point
+ *
+ * Return: The index of the operating point found, or level_max if no operating
+ *         point has enough capacity.
+ */
+static int
+level_for_capacity(u32 capacity, struct gpu_dvfs_opp *tbl, struct device *dev,
+		   int level_min, int level_max)
+{
+	int l;
+
+	for (l = level_min; l >= level_max; --l) {
+		if ((u32)tbl[l].clk[1] >= capacity) {
+			dev_dbg(dev,
+				"DVFS needs capacity %u. "
+				"Setting max freq %u",
+				capacity,
+				tbl[l].clk[1]);
+			return l;
+		}
+	}
+
+	dev_dbg(dev,
+		"DVFS measured use exceeded maximum capacity."
+		"Setting max freq %u",
+		tbl[level_max].clk[1]);
+
+	return level_max;
+}
+
+/**
  * gpu_dvfs_governor_quickstep_use_mcu_util() - The evaluation function for &GPU_DVFS_GOVERNOR_QUICKSTEP_USE_MCU.
  *
  * @kbdev:      The &struct kbase_device for the GPU.
@@ -87,6 +124,8 @@ static int gpu_dvfs_governor_basic(struct kbase_device *kbdev,
  *     we decrement the hysteresis value. If this decrement results in
  *     hysteresis being zero, then we drop a level.
  *
+ *   * Adjust the target frequency for capacity_headroom.
+ *
  * Return: The level that the GPU should run at next.
  *
  * Context: Process context. Expects the caller to hold the DVFS lock.
@@ -97,7 +136,7 @@ gpu_dvfs_governor_quickstep_use_mcu_util(struct kbase_device *kbdev,
 {
 	struct pixel_context *pc = kbdev->platform_context;
 	struct gpu_dvfs_opp *tbl = pc->dvfs.table;
-	int level = pc->dvfs.level;
+	int level = pc->dvfs.level_before_headroom;
 	int level_max = pc->dvfs.level_max;
 	int level_min = pc->dvfs.level_min;
 	int util = util_stats->util;
@@ -154,7 +193,88 @@ gpu_dvfs_governor_quickstep_use_mcu_util(struct kbase_device *kbdev,
 		pc->dvfs.governor.delay = tbl[level].hysteresis;
 	}
 
-	return level;
+	pc->dvfs.level_before_headroom = level;
+
+	if (pc->dvfs.capacity_headroom != 0)
+	{
+		u32 capacity = tbl[level].clk[1];
+		capacity += pc->dvfs.capacity_headroom;
+		return level_for_capacity(capacity, tbl, kbdev->dev, level_min, level_max);
+	}
+	else
+	{
+		/**
+		 * It's conceivable that the governor might choose an operating
+		 * point with the same core clock rate but higher QoS votes, so
+		 * respect the exact level chosen rather than doing a lookup in
+		 * the table solely based on capacity.
+		 **/
+		return level;
+	}
+}
+
+/**
+ * gpu_dvfs_governor_capacity_use_mcu_util() - The evaluation function for &GPU_DVFS_GOVERNOR_CAPACITY_USE_MCU.
+ *
+ * @kbdev:      The &struct kbase_device for the GPU.
+ * @util_stats: The current GPU utilization statistics.
+ *
+ * Algorithm:
+ *   * If we are above 95% capacity at the current level, move to the highest
+ *     operating point.
+ *   * Otherwise, find the maximum capacity used in the last
+ *     capacity_history_depth DVFS intervals.
+ *   * Add capacity_headroom.
+ *   * Choose the lowest operating point that has that capacity.
+ *
+ * Return: The level that the GPU should run at next.
+ *
+ * Context: Process context. Expects the caller to hold the DVFS lock.
+ */
+static int
+gpu_dvfs_governor_capacity_use_mcu_util(struct kbase_device *kbdev,
+					 struct gpu_dvfs_utlization *util_stats)
+{
+	struct pixel_context *pc = kbdev->platform_context;
+	struct gpu_dvfs_opp *tbl = pc->dvfs.table;
+	int level = pc->dvfs.level;
+	int level_max = pc->dvfs.level_max;
+	int level_min = pc->dvfs.level_min;
+	u32 capacity_target = 0;
+	u64 util = util_stats->util < 0 ? 0 : util_stats->util;
+	u64 mcu_util = util_stats->mcu_util < 0 ? 0 : util_stats->mcu_util;
+	u64 total_util = util + mcu_util;
+
+	{
+		u64 capacity_used = (u64)tbl[level].clk[1] * total_util / 100ul;
+		pc->dvfs.capacity_history[pc->dvfs.capacity_history_index] = (u32)capacity_used;
+		pc->dvfs.capacity_history_index++;
+		pc->dvfs.capacity_history_index %= ARRAY_SIZE(pc->dvfs.capacity_history);
+	}
+
+	lockdep_assert_held(&pc->dvfs.lock);
+
+	if (total_util > 95) {
+		dev_dbg(kbdev->dev,
+			"DVFS load exceeds measurable levels. "
+			"Setting max freq %u",
+			tbl[level_max].clk[1]);
+		return level_max;
+	}
+
+	{
+		int h;
+
+		for (h = 0; h < ARRAY_SIZE(pc->dvfs.capacity_history); ++h) {
+			if (capacity_target < pc->dvfs.capacity_history[h]) {
+				capacity_target = pc->dvfs.capacity_history[h];
+			}
+		}
+
+		capacity_target += pc->dvfs.capacity_headroom;
+	}
+
+	return level_for_capacity(capacity_target, tbl, kbdev->dev, level_min, level_max);
 }
 
 /**
@@ -240,13 +360,16 @@ static struct gpu_dvfs_governor_info governors[GPU_DVFS_GOVERNOR_COUNT] = {
 	{
 		"quickstep",
 		gpu_dvfs_governor_quickstep,
-	}
+	},
 #if MALI_USE_CSF
-	,
 	{
 		"quickstep_use_mcu",
 		gpu_dvfs_governor_quickstep_use_mcu_util,
-	}
+	},
+	{
+		"capacity_use_mcu",
+		gpu_dvfs_governor_capacity_use_mcu_util,
+	},
 #endif
 };
 

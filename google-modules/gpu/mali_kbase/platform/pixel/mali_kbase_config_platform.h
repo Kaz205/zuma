@@ -320,15 +320,12 @@ struct gpu_dvfs_metrics_uid_stats;
  * @dvfs.qos.bts.threshold: The G3D shader stack clock at which BTS will be enabled. Set via DT.
  * @dvfs.qos.bts.scenario:  The index of the BTS scenario to be used. Set via DT.
  *
- * @slc.lock:           Synchronize updates to the SLC partition accounting variables.
- * @slc.demand:         The total demand for SLC space, an aggregation of each kctx's demand.
- * @slc.usage:          The total amount of SLC space used, an aggregation of each kctx's usage.
- *
  * @itmon.wq:     A workqueue for ITMON page table search.
  * @itmon.work:   The work item for the above.
  * @itmon.nb:     The ITMON notifier block.
  * @itmon.pa:     The faulting physical address.
  * @itmon.active: Active count, non-zero while a search is active.
+ * @slc_demand:   Tracks demand for SLC space
  */
 struct pixel_context {
 	struct kbase_device *kbdev;
@@ -353,9 +350,6 @@ struct pixel_context {
 		struct notifier_block qos_nb;
 #endif
 		struct pixel_rail_state_log *rail_state_log;
-#ifdef CONFIG_MALI_HOST_CONTROLS_SC_RAILS
-		bool ifpo_enabled;
-#endif
 		unsigned int firmware_idle_hysteresis_time_ms;
 #ifdef CONFIG_MALI_PIXEL_GPU_SLEEP
 		unsigned int firmware_idle_hysteresis_gpu_sleep_scaler;
@@ -392,6 +386,9 @@ struct pixel_context {
 		int table_size;
 		int step_up_val;
 		int level;
+#if MALI_USE_CSF
+		int level_before_headroom;
+#endif
 		int level_target;
 		int level_max;
 		int level_min;
@@ -399,6 +396,12 @@ struct pixel_context {
 		int level_scaling_min;
 		int level_scaling_compute_min;
 		struct gpu_dvfs_level_lock level_locks[GPU_DVFS_LEVEL_LOCK_COUNT];
+#if MALI_USE_CSF
+		u32 capacity_headroom;
+		u32 capacity_history[8];
+		u8 capacity_history_depth;
+		u8 capacity_history_index;
+#endif
 
 		struct {
 			enum gpu_dvfs_governor_type curr;
@@ -455,12 +458,6 @@ struct pixel_context {
 	} dvfs;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 
-	struct {
-		struct mutex lock;
-		u64 demand;
-		u64 usage;
-	} slc;
-
 #if IS_ENABLED(CONFIG_EXYNOS_ITMON)
 	struct {
 		struct workqueue_struct *wq;
@@ -470,28 +467,26 @@ struct pixel_context {
 		atomic_t active;
 	} itmon;
 #endif
+#ifndef PIXEL_GPU_SLC_ACPM_SIGNAL
+	atomic_t slc_demand;
+#endif /* PIXEL_GPU_SLC_ACPM_SIGNAL */
 };
 
 /**
  * struct pixel_platform_data - Per kbase_context Pixel specific platform data
  *
- * @kctx:  Handle to the parent kctx
- * @stats: Tracks the dvfs metrics for the UID associated with this context
- *
- * @slc.peak_demand:         The parent context's maximum demand for SLC space
- * @slc.peak_usage:          The parent context's maximum use of SLC space
- * @slc.idle_work:           Work item used to queue SLC partition shrink upon context idle
- * @slc.idle_work_cancelled: Flag for async cancellation of idle_work
+ * @kctx:       Handle to the parent kctx
+ * @stats:      Tracks the dvfs metrics for the UID associated with this context
+ * @slc_vote:   Tracks whether this context is voting for slc
+ * @slc_demand: Tracks demand for SLC space
  */
 struct pixel_platform_data {
 	struct kbase_context *kctx;
 	struct gpu_dvfs_metrics_uid_stats* stats;
-	struct {
-		u64 peak_demand;
-		u64 peak_usage;
-		struct work_struct idle_work;
-		atomic_t idle_work_cancelled;
-	} slc;
+	int slc_vote;
+#ifndef PIXEL_GPU_SLC_ACPM_SIGNAL
+	atomic_t slc_demand;
+#endif /* PIXEL_GPU_SLC_ACPM_SIGNAL */
 };
 
 #endif /* _KBASE_CONFIG_PLATFORM_H_ */

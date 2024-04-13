@@ -40,6 +40,19 @@ static void __iomem *usbdp_combo_phy_reg;
 void __iomem *phycon_base_addr;
 EXPORT_SYMBOL_GPL(phycon_base_addr);
 
+static int (*s2mpu_notify)(struct device *dev, bool on);
+
+int exynos_usbdrd_set_s2mpu_pm_ops(int (*cb)(struct device *dev, bool on))
+{
+	/*
+	 * Paired with smp_load_acquire(&s2mpu_notify),
+	 * Ensure memory stores hapenning during module init
+	 * are observed before executing the callback.
+	 */
+	return cmpxchg_release(&s2mpu_notify, NULL, cb) ? -EBUSY : 0;
+}
+EXPORT_SYMBOL_GPL(exynos_usbdrd_set_s2mpu_pm_ops);
+
 /*u32 get_speed_and_disu1u2(void);*/
 
 static ssize_t
@@ -1134,14 +1147,20 @@ static int exynos_usbdrd_get_sub_phyinfo(struct exynos_usbdrd_phy *phy_drd)
 	struct device_node *tune_node;
 	int ret;
 	int value;
+	int mode;
 
 	if (of_property_read_u32(dev->of_node, "sub_phy_version", &value)) {
 		dev_err(dev, "can't get sub_phy_version\n");
 		return -EINVAL;
 	}
+	if (of_property_read_u32(dev->of_node, "usbdp_mode", &mode)) {
+		dev_err(dev, "can't get usbdp_mode\n");
+		return -EINVAL;
+	}
 
 	phy_drd->usbphy_sub_info.version = value;
 	phy_drd->usbphy_sub_info.refclk = phy_drd->extrefclk;
+	phy_drd->usbphy_sub_info.usbdp_mode = mode;
 
 	phy_drd->usbphy_sub_info.regs_base = phy_drd->reg_dpphy_ctrl;
 	phy_drd->usbphy_sub_info.regs_base_2nd = phy_drd->reg_dpphy_tca;
@@ -1908,7 +1927,9 @@ int exynos_usbdrd_ldo_manual_control(bool on)
 	if (on) {
 		if (extcon_get_state(phy_drd->edev, EXTCON_USB) <= 0 &&
 		    extcon_get_state(phy_drd->edev, EXTCON_USB_HOST) <= 0)
-			eusb_repeater_power_off();
+			eusb_repeater_update_usb_state(false);
+		else
+			eusb_repeater_update_usb_state(true);
 	}
 #endif
 
@@ -1919,6 +1940,7 @@ EXPORT_SYMBOL_GPL(exynos_usbdrd_ldo_manual_control);
 int exynos_usbdrd_s2mpu_manual_control(bool on)
 {
 	struct exynos_usbdrd_phy *phy_drd;
+	int (*__s2mpu_notify)(struct device *dev, bool on);
 
 	pr_debug("%s s2mpu = %d\n", __func__, on);
 
@@ -1928,12 +1950,12 @@ int exynos_usbdrd_s2mpu_manual_control(bool on)
 		return -ENODEV;
 	}
 
-	if (!phy_drd->s2mpu)
+	/* Paired with cmpxchg_release in exynos_usbdrd_set_s2mpu_pm_ops. */
+	__s2mpu_notify = smp_load_acquire(&s2mpu_notify);
+	if (!phy_drd->s2mpu || !__s2mpu_notify)
 		return 0;
 
-	if (is_protected_kvm_enabled())
-		return  on ? pkvm_iommu_resume(phy_drd->s2mpu)
-			   : pkvm_iommu_suspend(phy_drd->s2mpu);
+	__s2mpu_notify(phy_drd->s2mpu, on);
 
 	return 0;
 }

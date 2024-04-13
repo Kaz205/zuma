@@ -1,7 +1,7 @@
 /*
  * DHD Bus Module for PCIE
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -17357,6 +17357,51 @@ dhdpcie_set_pmu_fisctrlsts(struct dhd_bus *bus)
 }
 #endif /* DHD_SSSR_DUMP */
 
+#ifdef DHD_COREDUMP
+void
+dhd_get_ewp_init_state(dhd_bus_t *bus, uint8 *init_state)
+{
+	int ret = BCME_OK;
+	pciedev_shared_t *sh;
+	ewp_info_t ewp_info;
+
+	/* Initialize state to 0xff */
+	*init_state = -1;
+
+	if (!bus) {
+		DHD_ERROR(("%s: bus null\n", __FUNCTION__));
+		return;
+	}
+
+	sh = bus->pcie_sh;
+	if (!sh) {
+		DHD_ERROR(("%s: sh null\n", __FUNCTION__));
+		return;
+	}
+
+	/* check sanity of ewp_info_addr */
+	if (IS_HWADDR_INVALID(sh->ewp_info_addr)) {
+		DHD_ERROR(("%s: bad ewp_info_addr(%x) \n", __FUNCTION__,
+			sh->ewp_info_addr));
+		return;
+	}
+
+	(void)memset_s(&ewp_info, sizeof(ewp_info), 0, sizeof(ewp_info));
+
+	/* read the ewp_info_t structure */
+	ret = dhdpcie_bus_membytes(bus, FALSE, DHD_PCIE_MEM_BAR1, (ulong)sh->ewp_info_addr,
+		(uint8 *)&ewp_info, sizeof(ewp_info));
+	if (ret < 0) {
+		DHD_ERROR(("%s: Error reading ewp_info structure from dongle \n",
+			__FUNCTION__));
+		return;
+	}
+
+	*init_state = ewp_info.init_state;
+	return;
+}
+#endif /* DHD_COREDUMP */
+
 #if defined(__linux__)
 /*
  * Add any quirks post bus_init here
@@ -19368,6 +19413,59 @@ dhdpcie_get_sssr_saqm_dump(dhd_pub_t *dhd, uint *buf, uint fifo_size,
 
 	return BCME_OK;
 }
+
+#ifdef DHD_COREDUMP
+void
+dhdpcie_get_etd_trapcode_str(dhd_pub_t *dhdp, char *trap_code, char *trap_subcode, int buflen)
+{
+	uint32 *ext_data;
+	hnd_ext_trap_hdr_t *hdr;
+	const bcm_tlv_t *tlv;
+
+	ext_data = dhdp->extended_trap_data;
+
+	/* Initialize code string to 0x0 */
+	snprintf(trap_code, buflen, "0x%x", TAG_TRAP_NONE);
+	snprintf(trap_subcode, buflen, "0x%x", 0);
+
+	/* return if there is no extended trap data */
+	if (!ext_data || !(dhdp->dongle_trap_data & D2H_DEV_EXT_TRAP_DATA)) {
+		DHD_ERROR(("%s: Not case for filling trap code (0x%x)\n",
+			__FUNCTION__, dhdp->dongle_trap_data));
+		return;
+	}
+
+	/* First word is original trap_data */
+	ext_data++;
+
+	/* Followed by the extended trap data header */
+	hdr = (hnd_ext_trap_hdr_t *)ext_data;
+
+	/* length sanity check */
+	if (hdr->len == 0 || (int16)hdr->len == -1) {
+		DHD_ERROR(("%s: invalid len:%u\n", __FUNCTION__, hdr->len));
+		return;
+	}
+
+	/* Extract TAG_TRAP_CODE */
+	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_CODE);
+	if (tlv) {
+		snprintf(trap_code, buflen, "0x%x", *(uint32 *)tlv->data);
+		DHD_PRINT(("%s: ETD TRAP_CODE:0x%x len:%d\n",
+			__FUNCTION__, *(uint32 *)tlv->data, tlv->len));
+	}
+
+	/* Extract TAG_TRAP_SUBCODE */
+	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_SUBCODE);
+	if (tlv) {
+		snprintf(trap_subcode, buflen, "0x%x", *(uint32 *)tlv->data);
+		DHD_PRINT(("%s: ETD TRAP_SUBCODE:0x%x len:%d\n",
+			__FUNCTION__, *(uint32 *)tlv->data, tlv->len));
+	}
+
+	return;
+}
+#endif /* DHD_COREDUMP */
 
 #if defined(BCMPCIE) && defined(EWP_ETD_PRSRV_LOGS)
 void

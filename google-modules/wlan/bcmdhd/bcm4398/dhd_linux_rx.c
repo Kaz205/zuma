@@ -2,7 +2,7 @@
  * Broadcom Dongle Host Driver (DHD),
  * Linux-specific network interface for receive(rx) path
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -773,7 +773,12 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 		skb->len = len;
 
 		/* TODO: re-look into dropped packets. */
+#ifdef DHD_PKT_MON_DUAL_STA
+		DHD_DBG_PKT_MON_RX(dhdp, ifidx, skb, FRAME_TYPE_ETHERNET_II, FALSE);
+#else
 		DHD_DBG_PKT_MON_RX(dhdp, skb, FRAME_TYPE_ETHERNET_II, FALSE);
+#endif /* DHD_PKT_MON_DUAL_STA */
+
 		if (ntoh16(skb->protocol) == ETHER_TYPE_BRCM) {
 			DHD_LOG_ROUTE_EVENTS(dhdp->logger, skb, skb->len);
 		}

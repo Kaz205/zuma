@@ -4,7 +4,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -318,6 +318,9 @@ static INLINE bool dhd_bus_get_read_shm(dhd_pub_t *dhdp) { return 0; }
 extern INLINE int dhd_bus_checkdied(struct dhd_bus *bus, char *data, uint size) { return 0; }
 #endif /* BCMPCIE */
 
+#ifdef DHD_COREDUMP
+void dhdpcie_get_etd_trapcode_str(dhd_pub_t *dhd, char *trap_code, char *trap_subcode, int len);
+#endif /* DHD_COREDUMP */
 #if defined(BCMPCIE) && defined(EWP_ETD_PRSRV_LOGS)
 void dhdpcie_get_etd_preserve_logs(dhd_pub_t *dhd, uint8 *ext_trap_data,
 		void *event_decode_data);
@@ -465,6 +468,9 @@ int dhd_bus_get_ewp_etb_config(struct dhd_bus *bus);
 int dhd_bus_get_ewp_etb_dump(struct dhd_bus *bus, uint8 *buf, uint bufsize);
 int dhd_bus_alloc_ewp_etb_config_mem(struct dhd_bus *bus);
 void dhd_bus_dealloc_ewp_etb_config_mem(struct dhd_bus *bus);
+#ifdef DHD_COREDUMP
+extern void dhd_get_ewp_init_state(struct dhd_bus *bus, uint8 *init_state);
+#endif /* DHD_COREDUMP */
 
 void dhd_bus_update_flow_watermark_stats(struct dhd_bus *bus, uint16 flowid, uint16 rd,
 	uint16 wr, uint16 ringsz, bool upd_watermark);

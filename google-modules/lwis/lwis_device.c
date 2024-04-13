@@ -1,11 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Google LWIS Base Device Driver
  *
- * Copyright (c) 2018 Google, LLC
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Copyright 2018 Google LLC.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME "-dev: " fmt
@@ -16,10 +13,12 @@
 #include <linux/device.h>
 #include <linux/hashtable.h>
 #include <linux/init.h>
+#include <linux/kthread.h>
 #include <linux/module.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/workqueue.h>
 
 #include "lwis_buffer.h"
 #include "lwis_clock.h"
@@ -589,6 +588,31 @@ static struct lwis_device *get_power_down_dev(struct lwis_device *lwis_dev)
 	return lwis_dev;
 }
 
+void lwis_queue_device_worker(struct lwis_client *client)
+{
+	struct lwis_i2c_bus_manager *i2c_bus_manager = lwis_i2c_bus_manager_get(client->lwis_dev);
+	if (i2c_bus_manager) {
+		kthread_queue_work(&i2c_bus_manager->i2c_bus_worker, &client->i2c_work);
+	} else {
+		if (client->lwis_dev->transaction_worker_thread) {
+			kthread_queue_work(&client->lwis_dev->transaction_worker,
+					   &client->transaction_work);
+		}
+	}
+}
+
+void lwis_flush_device_worker(struct lwis_client *client)
+{
+	struct lwis_i2c_bus_manager *i2c_bus_manager = lwis_i2c_bus_manager_get(client->lwis_dev);
+	if (i2c_bus_manager) {
+		lwis_i2c_bus_manager_flush_i2c_worker(client->lwis_dev);
+	} else {
+		if (client->lwis_dev->transaction_worker_thread) {
+			kthread_flush_worker(&client->lwis_dev->transaction_worker);
+		}
+	}
+}
+
 int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 				    struct lwis_device_power_sequence_list *list, bool set_active,
 				    bool skip_error)
@@ -687,6 +711,7 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 						}
 					}
 				}
+				gpios_info->hold_dev = lwis_dev->k_dev;
 				gpios_info->gpios = gpios;
 				set_value = 1;
 			} else {
@@ -1608,7 +1633,6 @@ void lwis_base_unprobe(struct lwis_device *unprobe_lwis_dev)
 				lwis_dev->irq_gpios_info.gpios = NULL;
 			}
 
-			/* Disconnect from the bus manager */
 			lwis_i2c_bus_manager_disconnect(lwis_dev);
 
 			/* Destroy device */

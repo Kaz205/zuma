@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver scan related code
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -2930,6 +2930,13 @@ static void _wl_cfgscan_cancel_scan(struct bcm_cfg80211 *cfg)
 			wl_cfgp2p_set_p2p_mode(cfg, WL_P2P_DISC_ST_SCAN, 0, 0,
 					wl_to_p2p_bss_bssidx(cfg, P2PAPI_BSSCFG_DEVICE));
 		}
+	}
+
+	if (cfg->loc.in_progress) {
+		/* listen on channel uses passive scan */
+		wl_cfgscan_scan_abort(cfg);
+		WL_INFORM_MEM(("listen on channel aborted! \n"));
+		/* fall through to check scan states */
 	}
 
 	if (!cfg->scan_request && !cfg->sched_scan_req) {

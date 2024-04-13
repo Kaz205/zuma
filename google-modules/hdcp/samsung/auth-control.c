@@ -30,6 +30,13 @@ module_param(max_ver, ulong, 0664);
 MODULE_PARM_DESC(max_ver,
 	"support up to specific hdcp version by setting max_ver=x");
 
+static unsigned long max_retry_count = 5;
+module_param(max_retry_count, ulong, 0664);
+MODULE_PARM_DESC(max_retry_count,
+	"set number of allowed retry times by setting max_retry_count=x");
+
+static uint32_t hdcp_auth_try_count = 0;
+
 int hdcp_get_auth_state(void) {
 	return state;
 }
@@ -50,7 +57,7 @@ static int run_hdcp2_auth(void) {
 		} else if (ret != -EAGAIN) {
 			return ret;
 		}
-		hdcp_info("HDCP22 Retry...\n");
+		hdcp_info("HDCP22 Retry(%d)...\n", i);
 	}
 
 	return -EIO;
@@ -103,23 +110,45 @@ static void hdcp_worker(struct work_struct *work) {
 }
 
 void hdcp_dplink_handle_irq(void) {
-	if (state == HDCP2_AUTH_PROGRESS || state == HDCP2_AUTH_DONE) {
-		if (hdcp22_dplink_handle_irq() == -EAGAIN)
-			schedule_delayed_work(&hdcp_dev->hdcp_work, 0);
-		return;
+	int ret = 0;
+
+	switch (state) {
+	case HDCP2_AUTH_PROGRESS:
+		hdcp22_dplink_handle_irq();
+		break;
+	case HDCP2_AUTH_DONE:
+		ret = hdcp22_dplink_handle_irq();
+		break;
+	case HDCP1_AUTH_DONE:
+		ret = hdcp13_dplink_handle_irq();
+		break;
+	default:
+		hdcp_info("HDCP irq ignored during state(%d)\n", state);
 	}
 
-	if (state == HDCP1_AUTH_DONE) {
-		if (hdcp13_dplink_handle_irq() == -EAGAIN)
-			schedule_delayed_work(&hdcp_dev->hdcp_work, 0);
-		return;
+	if (ret == -EFAULT) {
+		if (hdcp_auth_try_count >= max_retry_count) {
+			hdcp_err("HDCP disabled until next physical re-connect"\
+				 "tried %lu times\n", max_retry_count);
+			return;
+		}
+		hdcp_auth_try_count++;
 	}
+
+	if (ret == -EAGAIN || ret == -EFAULT)
+		schedule_delayed_work(&hdcp_dev->hdcp_work, 0);
 }
 EXPORT_SYMBOL_GPL(hdcp_dplink_handle_irq);
 
 
 void hdcp_dplink_connect_state(enum dp_state dp_hdcp_state) {
 	hdcp_info("Displayport connect info (%d)\n", dp_hdcp_state);
+
+	if (dp_hdcp_state == DP_PHYSICAL_DISCONNECT) {
+		hdcp_auth_try_count = 0;
+		return;
+	}
+
 	hdcp_tee_connect_info((int)dp_hdcp_state);
 	if (dp_hdcp_state == DP_DISCONNECT) {
 		hdcp13_dplink_abort();
@@ -131,6 +160,12 @@ void hdcp_dplink_connect_state(enum dp_state dp_hdcp_state) {
 		return;
 	}
 
+	if (hdcp_auth_try_count >= max_retry_count) {
+		hdcp_err("HDCP disabled until next physical re-connect"\
+			 "tried %lu times\n", max_retry_count);
+		return;
+	}
+	hdcp_auth_try_count++;
 	schedule_delayed_work(&hdcp_dev->hdcp_work,
 		msecs_to_jiffies(HDCP_SCHEDULE_DELAY_MSEC));
 	return;

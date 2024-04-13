@@ -42,6 +42,7 @@
 	status = "okay";
 };
 
-&drmdecon2 {
+&drmdecon1 {
 	status = "okay";
+	connector = <0x10>;
 };

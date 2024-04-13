@@ -179,7 +179,7 @@ static u32 audio_sync_m_n[2][4][7] = {
  */
 
 /* USBDP PHY TCA Registers */
-static void dpphytca_reg_wait_mode_change(enum lane_usage lane)
+static int dpphytca_reg_wait_mode_change(enum lane_usage lane)
 {
 	unsigned int cnt = 0;
 	unsigned int val = 0;
@@ -202,9 +202,11 @@ static void dpphytca_reg_wait_mode_change(enum lane_usage lane)
 			      TCA_REG_TCA_INTR_STS));
 
 		cal_log_err(0, "Fail to change mode from USB to DP%d\n", lane);
-	} else
-		cal_log_debug(0, "Success to change mode from USB to DP%d\n",
-			      lane);
+		return -ETIME;
+	}
+
+	cal_log_debug(0, "Success to change mode from USB to DP%d\n", lane);
+	return 0;
 }
 
 static void dpphytca_reg_set_tcpc(u32 mux_control, u32 orientation,
@@ -380,6 +382,17 @@ static void dpphy_reg_cr_write_mask(u16 addr, u16 data, u16 mask)
 	cal_log_debug(0, "[CR][%04X][%04X]", addr, old);
 }
 
+/*
+ * Boost charge pump bias current
+ * [10:8] mpllb_ctr_cp_int_ref
+ * [2:0] mplla_ctr_cp_int_ref
+ */
+static void dpphy_reg_enable_cp_current_boost(void)
+{
+	dpphy_reg_cr_write_mask(0x5c, 0x400, 0x700);
+	dpphy_reg_cr_write_mask(0x5c, 0x4, 0x7);
+}
+
 /* fix abnormal lane2 signal */
 static void dpphy_reg_usb_tune_reset(enum plug_orientation orient)
 {
@@ -496,17 +509,17 @@ static void dpphy_reg_set_config10_tx_eq_pre(u32 eq_pre_val, u32 eq_pre_mask)
 	dp_phy_write_mask(SST1, DP_CONFIG10, eq_pre_val, eq_pre_mask);
 }
 
-static void dpphy_reg_set_config11_tx_pstate(enum lane_usage lane)
+static void dpphy_reg_set_config11_tx_pstate(u32 en, enum lane_usage lane)
 {
-	/* P2(0b11) is power down */
-	u32 val = 0;
+	u32 val = DP_TX_PSTATE_SET_0LANES;
 
-	if (lane == DP_USE_0_LANES)
-		val = DP_TX_PSTATE_SET_0LANES; // Power Down for 4 Lanes
+	/* P2(0b11) is power down */
+	if (!en || lane == DP_USE_0_LANES)
+		val = DP_TX_PSTATE_SET_0LANES;
 	else if (lane == DP_USE_2_LANES)
-		val = DP_TX_PSTATE_SET_2LANES; // Power Up for 2 lanes
+		val = DP_TX_PSTATE_SET_2LANES;
 	else if (lane == DP_USE_4_LANES)
-		val = DP_TX_PSTATE_SET_4LANES; // Power Up for 4 lanes
+		val = DP_TX_PSTATE_SET_4LANES;
 
 	dp_phy_write_mask(SST1, DP_CONFIG11, val, DP_TX_PSTATE_MASK);
 }
@@ -515,8 +528,7 @@ static void dpphy_reg_wait_config12_tx_ack(enum lane_usage lane)
 {
 	u32 val = 0;
 
-	if (readl_poll_timeout_atomic(regs_dp[REGS_PHY][SST1].regs +
-					      DP_CONFIG12,
+	if (readl_poll_timeout_atomic(regs_dp[REGS_PHY][SST1].regs + DP_CONFIG12,
 				      val, !DP_TX_ACK_GET(val), 10, 2000)) {
 		cal_log_err(0, "is timeout. Fail to ack DP TX.\n");
 		cal_log_err(0, "val(0x%08x) DP_CONFIG12 read:0x%08x\n", val,
@@ -524,34 +536,30 @@ static void dpphy_reg_wait_config12_tx_ack(enum lane_usage lane)
 	}
 }
 
-static void dpphy_reg_set_config12_status_update(enum lane_usage lane)
+static void dpphy_reg_set_config12_status_update(void)
 {
 	u32 val = 0;
 
-	if (lane == DP_USE_0_LANES)
-		return;
-	else if (lane == DP_USE_2_LANES)
-		val = DP_TX_REQ_STATUS_SET_2LANES;
-	else if (lane == DP_USE_4_LANES)
-		val = DP_TX_REQ_STATUS_SET_4LANES;
+	/* Set DP TX Request */
+	dp_phy_write_mask(SST1, DP_CONFIG12, DP_TX_REQ_SET_4LANES, DP_TX_REQ_MASK);
 
-	dp_phy_write_mask(SST1, DP_CONFIG12, val, DP_TX_REQ_STATUS_MASK);
-
-	if (readl_poll_timeout_atomic(
-		    regs_dp[REGS_PHY][SST1].regs + DP_CONFIG12, val,
-		    !DP_TX_REQ_STATUS_GET(val), 10, 2000)) {
-		cal_log_err(0, "is timeout. Fail to update DP TX status.\n");
+	/* Wait for DP TX Request Clear */
+	if (readl_poll_timeout_atomic(regs_dp[REGS_PHY][SST1].regs + DP_CONFIG12,
+				      val, !DP_TX_REQ_GET(val), 10, 2000)) {
+		cal_log_err(0, "is timeout. Fail to request DP TX update.\n");
 		cal_log_err(0, "val(0x%08x) DP_CONFIG12 read:0x%08x\n", val,
 			    readl(regs_dp[REGS_PHY][SST1].regs + DP_CONFIG12));
-	} else
-		cal_log_debug(0, "Success to update DP TX status.\n");
+	}
+
+	/* Wait for TX Acknowledge to confirm DP TX request is applied */
+	dpphy_reg_wait_config12_tx_ack(DP_USE_4_LANES);
 }
 
-static void dpphy_reg_set_config12_tx_mpllb_en(enum lane_usage lane)
+static void dpphy_reg_set_config12_tx_mpllb_en(u32 en, enum lane_usage lane)
 {
-	u32 val = 0;
+	u32 val = DP_TX_MPLL_EN_SET_0LANES;
 
-	if (lane == DP_USE_0_LANES)
+	if (!en || lane == DP_USE_0_LANES)
 		val = DP_TX_MPLL_EN_SET_0LANES;
 	else if (lane == DP_USE_2_LANES)
 		val = DP_TX_MPLL_EN_SET_2LANES;
@@ -561,11 +569,12 @@ static void dpphy_reg_set_config12_tx_mpllb_en(enum lane_usage lane)
 	dp_phy_write_mask(SST1, DP_CONFIG12, val, DP_TX_MPLL_EN_MASK);
 }
 
-static void dpphy_reg_set_config12_tx_width(enum lane_usage lane)
+static void dpphy_reg_set_config12_tx_width(u32 en, enum lane_usage lane)
 {
 	u32 val = 0;
 
-	if (lane == DP_USE_0_LANES)
+	/* "0b11" is 20bit DP TX lane width */
+	if (!en || lane == DP_USE_0_LANES)
 		val = DP_TX_WIDTH_SET_0LANES;
 	else if (lane == DP_USE_2_LANES)
 		val = DP_TX_WIDTH_SET_2LANES;
@@ -577,47 +586,31 @@ static void dpphy_reg_set_config12_tx_width(enum lane_usage lane)
 
 static void dpphy_reg_set_config13_tx_reset(u32 en)
 {
-	u32 val = 0;
-
-	if (en)
-		val = DP_TX_RESET_ALL;
-	else
-		val = DP_TX_RESET_RELEASE;
-
-	dp_phy_write_mask(SST1, DP_CONFIG13, val, DP_TX_RESET_MASK);
+	dp_phy_write_mask(SST1, DP_CONFIG13,
+			  en ? DP_TX_RESET_ALL : DP_TX_RESET_RELEASE,
+			  DP_TX_RESET_MASK);
 }
 
-static void dpphy_reg_set_config13_tx_enable(enum lane_usage lane)
+static void dpphy_reg_set_config13_tx_enable(u32 en, enum lane_usage lane)
 {
 	u32 val = 0;
 
-	if (lane == DP_USE_2_LANES)
-		val = DP_TX_ENABLE_SET_2LANES;
-	else if (lane == DP_USE_4_LANES)
-		val = DP_TX_ENABLE_SET_4LANES;
-
-	dp_phy_write_mask(SST1, DP_CONFIG13, val, DP_TX_DISABLE_MASK);
-}
-
-static void dpphy_reg_set_config13_tx_disable(enum lane_usage lane)
-{
-	u32 val = 0;
-
-	if (lane == DP_USE_2_LANES)
+	/* "0b1" disables DP TX lane, "0b0" enables DP TX lane */
+	if (!en || lane == DP_USE_0_LANES)
+		val = DP_TX_DISABLE_SET_4LANES;
+	else if (lane == DP_USE_2_LANES)
 		val = DP_TX_DISABLE_SET_2LANES;
 	else if (lane == DP_USE_4_LANES)
-		val = DP_TX_DISABLE_SET_4LANES;
+		val = DP_TX_DISABLE_SET_0LANES;
 
 	dp_phy_write_mask(SST1, DP_CONFIG13, val, DP_TX_DISABLE_MASK);
 }
 
-static void dpphy_reg_set_config17_dcc_byp_ac_cap(u32 dcc_byp_ac_cap,
-						  enum lane_usage lane)
+static void dpphy_reg_set_config17_dcc_byp_ac_cap(u32 en, enum lane_usage lane)
 {
-	// Need to check this function
 	u32 val = 0;
 
-	if (lane == DP_USE_0_LANES)
+	if (!en || lane == DP_USE_0_LANES)
 		val = DP_TX_DCC_BYP_AC_CAP_SET_0LANES;
 	else if (lane == DP_USE_2_LANES)
 		val = DP_TX_DCC_BYP_AC_CAP_SET_2LANES;
@@ -692,11 +685,11 @@ static void dpphy_reg_reset_tx_lanes(void)
 {
 	// Assert all TX lanes reset
 	dpphy_reg_set_config13_tx_reset(1);
-	dpphy_reg_set_config13_tx_disable(DP_USE_4_LANES);
+	dpphy_reg_set_config13_tx_enable(0, DP_USE_4_LANES);
 	cal_log_debug(0, "disable all lanes.\n");
 
 	// Disable all TX lanes' power state: P2
-	dpphy_reg_set_config11_tx_pstate(DP_USE_0_LANES);
+	dpphy_reg_set_config11_tx_pstate(0, DP_USE_4_LANES);
 	cal_log_debug(0, "power off for all lanes.\n");
 
 	// Set TCA_TCPC Valid
@@ -707,8 +700,6 @@ static void dpphy_reg_reset_tx_lanes(void)
 
 	// De-Assert all TX lanes reset
 	dpphy_reg_set_config13_tx_reset(0);
-	dpphy_reg_set_config13_tx_enable(DP_USE_4_LANES);
-	cal_log_debug(0, "enable all lanes.\n");
 
 	// Wait TX_ACK De-Assert
 	dpphy_reg_wait_config12_tx_ack(DP_USE_4_LANES);
@@ -718,18 +709,18 @@ static void dpphy_reg_reset_mpllb(u32 en)
 {
 	if (en) {
 		// Assert USBDP PHY MPLLB reset
-		dpphy_reg_set_config12_tx_mpllb_en(DP_USE_0_LANES);
-		dpphy_reg_set_config11_tx_pstate(DP_USE_0_LANES);
+		dpphy_reg_set_config12_tx_mpllb_en(0, DP_USE_4_LANES);
+		dpphy_reg_set_config11_tx_pstate(0, DP_USE_4_LANES);
 		cal_log_debug(0, "disable mpllb and power off for all lanes\n");
 	} else {
 		// De-assert USBDP PHY MPLLB reset
-		dpphy_reg_set_config12_tx_mpllb_en(DP_USE_4_LANES);
-		dpphy_reg_set_config11_tx_pstate(DP_USE_4_LANES);
-		cal_log_debug(0, "enable mpllb and power off for all lanes\n");
+		dpphy_reg_set_config12_tx_mpllb_en(1, DP_USE_4_LANES);
+		dpphy_reg_set_config11_tx_pstate(1, DP_USE_4_LANES);
+		cal_log_debug(0, "enable mpllb and power on for all lanes\n");
 	}
 
 	// Request to update TX status
-	dpphy_reg_set_config12_status_update(DP_USE_4_LANES);
+	dpphy_reg_set_config12_status_update();
 	cal_log_debug(0, "status update for all lanes.\n");
 }
 
@@ -742,7 +733,7 @@ static void dpphy_reg_set_mpllb(struct dp_hw_config *hw_config, bool reconfig)
 	    mpllb_cp_prop_gs = (u32)0x7f;
 	// CONFIG02
 	u32 mpllb_div5_clk_en = 1, mpllb_div_cl_en = 0,
-	    mpllb_div_multiplier = 0, mpllb_force_en = 1;
+	    mpllb_div_multiplier = 0, mpllb_force_en = 0;
 	u32 mpllb_force_ack = 0, mpllb_fracn_cfg_update_en = 1,
 	    mpllb_fracn_en = 1, mpllb_fracn_den = 1;
 	// CONFIG03
@@ -758,12 +749,15 @@ static void dpphy_reg_set_mpllb(struct dp_hw_config *hw_config, bool reconfig)
 	u32 mpllb_ssc_up_spread = 0, mpllb_tx_clk_div = 0, mpllb_v2i = 0,
 	    mpllb_word_div2_en = 0;
 	u32 ref_clk_en = 1;
-	// CONFIG17
-	u32 dcc_byp_ac_cap = 0;
 
 	if (hw_config->use_ssc) {
 		mpllb_ssc_en = 1;
 		cal_log_debug(0, "configure for SSC\n");
+	}
+
+	if (hw_config->dp_emul) {
+		mpllb_force_en = 1;
+		cal_log_debug(0, "configure for DP Emulation Mode\n");
 	}
 
 	cal_log_debug(0, "link_rate(%d)\n", link_rate);
@@ -820,7 +814,6 @@ static void dpphy_reg_set_mpllb(struct dp_hw_config *hw_config, bool reconfig)
 		mpllb_multiplier = 0x130;
 		mpllb_tx_clk_div = 0x2;
 		mpllb_v2i = 0x2;
-		dcc_byp_ac_cap = 0x1;
 		if (mpllb_ssc_en) {
 			/* Max down-spread (-0.5%) for RBR SSC */
 			mpllb_ssc_peak = 0xD800;
@@ -856,7 +849,9 @@ static void dpphy_reg_set_mpllb(struct dp_hw_config *hw_config, bool reconfig)
 
 	// Configure Reference Clock for DP
 	dpphy_reg_set_config7_refclk_en(ref_clk_en);
-	dpphy_reg_set_config17_dcc_byp_ac_cap(dcc_byp_ac_cap, DP_USE_4_LANES);
+
+	/* Enable the bypassing AC Capacitor for all lanes */
+	dpphy_reg_set_config17_dcc_byp_ac_cap(1, DP_USE_4_LANES);
 }
 
 static enum lane_usage dp_get_and_inform_lanes(struct dp_hw_config *hw_config)
@@ -893,7 +888,7 @@ static enum lane_usage dp_get_and_inform_lanes(struct dp_hw_config *hw_config)
 	return num_lane;
 }
 
-static void dpphy_reg_switch_to_dp(enum lane_usage num_lane)
+static int dpphy_reg_switch_to_dp(enum lane_usage num_lane)
 {
 	u32 tcpc_mux_con = NO_CONNECTION, tcpc_orientation = NORMAL;
 	u32 tcpc_low_pwr_en = STANDARD_OPERATION, tcpc_valid = VALID_I;
@@ -915,24 +910,34 @@ static void dpphy_reg_switch_to_dp(enum lane_usage num_lane)
 	cal_log_debug(0, "Start USB to DP%d\n", num_lane);
 	dpphytca_reg_set_tcpc(tcpc_mux_con, tcpc_orientation, tcpc_low_pwr_en,
 			      tcpc_valid);
-	dpphytca_reg_wait_mode_change(num_lane);
+	return dpphytca_reg_wait_mode_change(num_lane);
 }
 
-static void dpphy_reg_set_lanes(enum lane_usage num_lane)
+static void dpphy_reg_set_lanes(struct dp_hw_config *hw_config, enum lane_usage num_lane)
 {
-	dpphy_reg_set_config13_tx_enable(num_lane);
+	dpphy_reg_set_config12_tx_width(1, num_lane);
+	dpphy_reg_set_config12_tx_mpllb_en(1, num_lane);
+	dpphy_reg_set_config11_tx_pstate(1, num_lane);
+	cal_log_debug(0, "enable mpllb/power for %d lanes.\n", num_lane);
+
+	dpphy_reg_set_config12_status_update();
+	cal_log_debug(0, "status update for all lanes.\n");
+
+	if (hw_config->link_rate > LINK_RATE_RBR) {
+		/*
+		 * Disable the bypassing AC capacitor for HBRx mode only.
+		 * RBR mode is using the bypassing AC capacitor as default.
+		 */
+		dpphy_reg_set_config17_dcc_byp_ac_cap(0, num_lane);
+	}
+
+	dpphy_reg_set_config13_tx_enable(1, num_lane);
 	cal_log_debug(0, "enable %d lanes.\n", num_lane);
-
-	dpphy_reg_set_config12_tx_width(num_lane);
-	dpphy_reg_set_config12_tx_mpllb_en(num_lane);
-	cal_log_debug(0, "enable mpllb for %d lanes.\n", num_lane);
-
-	dpphy_reg_set_config12_status_update(num_lane);
-	cal_log_debug(0, "status update for %d lanes.\n", num_lane);
 }
 
-static void dpphy_reg_init(struct dp_hw_config *hw_config, bool reconfig)
+static int dpphy_reg_init(struct dp_hw_config *hw_config, bool reconfig)
 {
+	int ret;
 	enum lane_usage num_lane = DP_USE_0_LANES;
 
 	//dpphy_reg_usbdrd_qch_en(1);
@@ -949,6 +954,10 @@ static void dpphy_reg_init(struct dp_hw_config *hw_config, bool reconfig)
 	/* Assert DP Alt-mode Disable ACK */
 	dpphy_reg_set_config19_dpalt_disable_ack(1);
 
+	/* CP(Charge Pump) Bias Boosting X2 */
+	if (hw_config->phy_boost && !reconfig)
+		dpphy_reg_enable_cp_current_boost();
+
 	/* Set Master PLL-B for DP as Link_BW */
 	dpphy_reg_set_mpllb(hw_config, reconfig);
 	cal_log_debug(0, "set MPLLB as link_bw.\n");
@@ -957,15 +966,19 @@ static void dpphy_reg_init(struct dp_hw_config *hw_config, bool reconfig)
 	num_lane = dp_get_and_inform_lanes(hw_config);
 
 	/* Switch from USB to DP */
-	dpphy_reg_switch_to_dp(num_lane);
+	ret = dpphy_reg_switch_to_dp(num_lane);
+	if (ret)
+		return ret;
 	cal_log_debug(0, "switch from USB to DP.\n");
 
 	/* Set DP TX lanes */
-	dpphy_reg_set_lanes(num_lane);
+	dpphy_reg_set_lanes(hw_config, num_lane);
 	cal_log_debug(0, "set DP TX lanes.\n");
 
 	/* De-assert DP Alt-mode Disable ACK */
 	dpphy_reg_set_config19_dpalt_disable_ack(0);
+
+	return 0;
 }
 
 /*
@@ -1211,10 +1224,16 @@ static void dp_hw_set_common_interrupt(u32 en)
 }
 
 /* AUX Control Registers */
-static void dp_reg_set_aux_reply_timeout(void)
+static void dp_reg_set_aux_reply_timeout_and_retries(void)
 {
-	dp_write_mask(SST1, AUX_CONTROL, AUX_REPLY_TIMER_MODE_1800US,
-		      AUX_REPLY_TIMER_MODE_MASK);
+	/*
+	 * 1800 us timeout and no hardware retries.
+	 * Additional 1400 us wait will be done in software
+	 * to comply with DP CTS test 4.2.1.1 requirement.
+	 */
+	dp_write_mask(SST1, AUX_CONTROL,
+		      AUX_REPLY_TIMER_MODE_1800US | AUX_RETRY_TIMER_SET(0),
+		      AUX_REPLY_TIMER_MODE_MASK | AUX_RETRY_TIMER_MASK);
 }
 
 static void dp_reg_set_aux_pn(enum plug_orientation orient)
@@ -1297,8 +1316,14 @@ static int dp_reg_check_aux_monitors(void)
 			dp_read(SST1, AUX_REQUEST_CONTROL),
 			dp_read(SST1, AUX_COMMAND_CONTROL));
 
-		usleep_range(400, 410);
-		return -EIO;
+		if (AUX_CMD_STATUS_GET(val0) == AUX_CMD_STATUS_TIMEOUT_ERROR) {
+			cal_log_err(0, "DP Sink didn't reply in 1.8ms. Retry after 1.4ms.\n");
+			usleep_range(1400, 1410);
+			return -ETIME;
+		} else {
+			usleep_range(400, 410);
+			return -EIO;
+		}
 	} else
 		return 0;
 }
@@ -1470,11 +1495,11 @@ static void dp_hw_set_data_path(struct dp_hw_config *hw_config)
 		break;
 	}
 
-	// SNPS PHY Clock Enable
-	dp_reg_set_snps_tx_clk_en(num_lane);
-
 	// SNPS PHY Clock Ready
 	dp_reg_set_snps_tx_clk_rdy(num_lane);
+
+	// SNPS PHY Clock Enable
+	dp_reg_set_snps_tx_clk_en(num_lane);
 
 	// SNPS PHY Data Enable
 	dp_reg_set_snps_tx_data_en(num_lane);
@@ -2141,10 +2166,7 @@ static int dp_reg_set_aux_ch_operation_enable(void)
 	if (dp_reg_do_aux_transaction())
 		return -ETIME;
 
-	if (dp_reg_check_aux_monitors())
-		return -EIO;
-
-	return 0;
+	return dp_reg_check_aux_monitors();
 }
 
 static int dp_write_dpcd(u32 address, u32 length, u8 *data)
@@ -2155,7 +2177,7 @@ static int dp_write_dpcd(u32 address, u32 length, u8 *data)
 	while (retry_cnt > 0) {
 		dp_reg_aux_ch_buf_clr();
 		dp_reg_aux_defer_ctrl(1);
-		dp_reg_set_aux_reply_timeout();
+		dp_reg_set_aux_reply_timeout_and_retries();
 		dp_reg_set_aux_ch_command(DPCD_WRITE);
 		dp_reg_set_aux_ch_address(address);
 		dp_reg_set_aux_ch_length(length);
@@ -2181,7 +2203,7 @@ static int dp_read_dpcd(u32 address, u32 length, u8 *data)
 		dp_reg_set_aux_ch_length(length);
 		dp_reg_aux_ch_buf_clr();
 		dp_reg_aux_defer_ctrl(1);
-		dp_reg_set_aux_reply_timeout();
+		dp_reg_set_aux_reply_timeout_and_retries();
 		ret = dp_reg_set_aux_ch_operation_enable();
 		if (ret == 0)
 			break;
@@ -2258,7 +2280,7 @@ int dp_hw_read_edid(u8 block_cnt, u32 length, u8 *data)
 	while (retry_cnt > 0) {
 		dp_reg_aux_ch_buf_clr();
 		dp_reg_aux_defer_ctrl(1);
-		dp_reg_set_aux_reply_timeout();
+		dp_reg_set_aux_reply_timeout_and_retries();
 		dp_reg_set_aux_ch_address_only_command(false);
 
 		/* for 3,4 block */
@@ -2340,8 +2362,10 @@ int dp_hw_read_edid(u8 block_cnt, u32 length, u8 *data)
 }
 
 /* DP Hardware Control Interfaces */
-void dp_hw_init(struct dp_hw_config *hw_config)
+int dp_hw_init(struct dp_hw_config *hw_config)
 {
+	int ret;
+
 	cal_log_debug(0, "DP Link Version = 0x%X\n", dp_reg_get_version());
 
 	/* Apply Soft Reset */
@@ -2361,11 +2385,15 @@ void dp_hw_init(struct dp_hw_config *hw_config)
 	dwc3_exynos_phy_enable(1, 1);
 	atomic_inc(&hw_config->usbdp_phy_en_cnt);
 
-	dpphy_reg_init(hw_config, false);
+	ret = dpphy_reg_init(hw_config, false);
+	if (ret)
+		return ret;
 	cal_log_debug(0, "init USBDP Combo PHY\n");
 
 	/* Wait for PHY PLL Lock */
-	dp_reg_wait_phy_pll_lock();
+	ret = dp_reg_wait_phy_pll_lock();
+	if (ret)
+		return ret;
 	cal_log_debug(0, "locked PHY PLL\n");
 
 	/* Set system clock to TXCLK */
@@ -2397,21 +2425,29 @@ void dp_hw_init(struct dp_hw_config *hw_config)
 	/* Set Interrupts */
 	dp_hw_set_common_interrupt(1);
 	cal_log_debug(0, "set interrupts\n");
+
+	return 0;
 }
 
-void dp_hw_reinit(struct dp_hw_config *hw_config)
+int dp_hw_reinit(struct dp_hw_config *hw_config)
 {
+	int ret;
+
 	/* Set system clock to OSC */
 	dp_reg_set_txclk_osc();
 	cal_log_debug(0, "set system clk to OSC: Mux(%u)\n",
 		      dp_reg_get_gfmux_status());
 
 	/* USBDP PHY Re-initialization */
-	dpphy_reg_init(hw_config, true);
+	ret = dpphy_reg_init(hw_config, true);
+	if (ret)
+		return ret;
 	cal_log_debug(0, "reconfig USBDP Combo PHY\n");
 
 	/* Wait for PHY PLL Lock */
-	dp_reg_wait_phy_pll_lock();
+	ret = dp_reg_wait_phy_pll_lock();
+	if (ret)
+		return ret;
 	cal_log_debug(0, "locked PHY PLL\n");
 
 	/* Set system clock to TXCLK */
@@ -2433,6 +2469,8 @@ void dp_hw_reinit(struct dp_hw_config *hw_config)
 	dp_reg_set_enhanced_mode(hw_config->enhanced_mode ? 1 : 0);
 	dp_reg_set_sst1_video_func_en(1);
 	cal_log_debug(0, "set sst function\n");
+
+	return 0;
 }
 
 void dp_hw_deinit(struct dp_hw_config *hw_config)

@@ -35,6 +35,7 @@ static void goog_lookup_touch_report_rate(struct goog_touch_interface *gti);
 static int goog_precheck_heatmap(struct goog_touch_interface *gti);
 static void goog_set_display_state(struct goog_touch_interface *gti,
 	enum gti_display_state_setting display_state);
+static void gti_input_set_timestamp(struct goog_touch_interface *gti, ktime_t timestamp);
 
 /*-----------------------------------------------------------------------------
  * GTI/proc: forward declarations, structures and functions.
@@ -2544,7 +2545,6 @@ exit:
 void goog_offload_populate_frame(struct goog_touch_interface *gti,
 		struct touch_offload_frame *frame, bool reset_data)
 {
-	static u64 index;
 	char trace_tag[128];
 	u32 channel_type;
 	int i;
@@ -2554,10 +2554,10 @@ void goog_offload_populate_frame(struct goog_touch_interface *gti,
 	struct gti_sensor_data_cmd *cmd = &gti->cmd.sensor_data_cmd;
 
 	scnprintf(trace_tag, sizeof(trace_tag), "%s: IDX=%llu IN_TS=%lld.\n",
-		__func__, index, gti->input_timestamp);
+		__func__, gti->frame_index, gti->input_timestamp);
 	ATRACE_BEGIN(trace_tag);
 
-	frame->header.index = index++;
+	frame->header.index = gti->frame_index;
 	frame->header.timestamp = gti->input_timestamp;
 
 	/*
@@ -2716,8 +2716,8 @@ void goog_update_fw_settings(struct goog_touch_interface *gti)
 static void goog_offload_set_running(struct goog_touch_interface *gti, bool running)
 {
 	if (gti->offload.offload_running != running) {
-		GOOG_INFO(gti, "Set offload_running=%d, irq_index=%d, input_index=%d\n",
-			running, gti->irq_index, gti->input_index);
+		GOOG_INFO(gti, "Set offload_running=%d irq_index=%llu input_index=%llu IDX=%llu\n",
+			running, gti->irq_index, gti->input_index, gti->frame_index);
 
 		gti->offload.offload_running = running;
 
@@ -2736,10 +2736,9 @@ void goog_offload_input_report(void *handle,
 	unsigned long slot_bit_active = 0;
 	char trace_tag[128];
 	ktime_t ktime = ktime_get();
-	ktime_t *input_ktime;
 
 	scnprintf(trace_tag, sizeof(trace_tag),
-		"%s: IDX=%lld IN_TS=%lld TS=%lld DELTA=%lld ns.\n",
+		"%s: IDX=%llu IN_TS=%lld TS=%lld DELTA=%lld ns.\n",
 		__func__, report->index,
 		ktime_to_ns(report->timestamp), ktime_to_ns(ktime),
 		ktime_to_ns(ktime_sub(ktime, report->timestamp)));
@@ -2747,20 +2746,18 @@ void goog_offload_input_report(void *handle,
 
 	goog_input_lock(gti);
 
-	input_ktime = goog_input_get_timestamp(gti);
-	if (input_ktime &&
-		ktime_before(report->timestamp, input_ktime[INPUT_CLK_MONO])) {
-		GOOG_WARN(gti, "Drop obsolete input(IDX=%lld IN_TS=%lld TS=%lld DELTA=%lld ns)!\n",
+	if (ktime_before(report->timestamp, gti->input_dev_mono_ktime)) {
+		GOOG_WARN(gti, "Drop obsolete input(IDX=%llu IN_TS=%lld TS=%lld DELTA=%lld ns)!\n",
 			report->index,
 			ktime_to_ns(report->timestamp),
-			ktime_to_ns(input_ktime[INPUT_CLK_MONO]),
-			ktime_to_ns(ktime_sub(input_ktime[INPUT_CLK_MONO], report->timestamp)));
+			ktime_to_ns(gti->input_dev_mono_ktime),
+			ktime_to_ns(ktime_sub(gti->input_dev_mono_ktime, report->timestamp)));
 		goog_input_unlock(gti);
 		ATRACE_END();
 		return;
 	}
 
-	input_set_timestamp(gti->vendor_input_dev, report->timestamp);
+	gti_input_set_timestamp(gti, report->timestamp);
 	for (i = 0; i < MAX_SLOTS; i++) {
 		if (report->coords[i].status != COORD_STATUS_INACTIVE) {
 			switch (report->coords[i].status) {
@@ -2813,17 +2810,6 @@ void goog_offload_input_report(void *handle,
 	}
 	input_report_key(gti->vendor_input_dev, BTN_TOUCH, touch_down);
 	input_sync(gti->vendor_input_dev);
-
-	if ((slot_bit_active ^ gti->slot_bit_active) != 0) {
-		if (gti->slot_bit_last_active != gti->slot_bit_active ||
-				gti->slot_bit_offload_active != slot_bit_active)
-			GOOG_WARN(gti, "Unexpected fingers FW: %lu offload: %lu",
-					hweight_long(gti->slot_bit_active),
-					hweight_long(slot_bit_active));
-	}
-	gti->slot_bit_last_active = gti->slot_bit_active;
-	gti->slot_bit_offload_active = slot_bit_active;
-
 	goog_input_unlock(gti);
 
 	if (touch_down)
@@ -3109,7 +3095,7 @@ static void goog_input_flush_offload_fingers(struct goog_touch_interface *gti)
 		GOOG_WARN(gti, "No timestamp set by vendor driver before input report!");
 		timestamp = ktime_get();
 	}
-	input_set_timestamp(gti->vendor_input_dev, timestamp);
+	gti_input_set_timestamp(gti, timestamp);
 	for (i = 0; i < MAX_SLOTS; i++) {
 		input_mt_slot(gti->vendor_input_dev, i);
 		if (coords[i].status != COORD_STATUS_INACTIVE) {
@@ -3139,22 +3125,6 @@ static void goog_input_flush_offload_fingers(struct goog_touch_interface *gti)
 	goog_input_unlock(gti);
 }
 
-ktime_t *goog_input_get_timestamp(struct goog_touch_interface *gti)
-{
-	struct input_dev *dev;
-	const ktime_t invalid_timestamp = ktime_set(0, 0);
-
-	if (!gti || !gti->vendor_input_dev)
-		return NULL;
-
-	dev = gti->vendor_input_dev;
-	if (!ktime_compare(dev->timestamp[INPUT_CLK_MONO], invalid_timestamp))
-		return NULL;
-
-	return dev->timestamp;
-}
-EXPORT_SYMBOL_GPL(goog_input_get_timestamp);
-
 int goog_input_process(struct goog_touch_interface *gti, bool reset_data)
 {
 	int ret = 0;
@@ -3170,6 +3140,7 @@ int goog_input_process(struct goog_touch_interface *gti, bool reset_data)
 		return -EPERM;
 
 	mutex_lock(&gti->input_process_lock);
+	gti->frame_index++;
 
 	/*
 	 * Increase the input index when any slot bit changed which
@@ -3192,7 +3163,8 @@ int goog_input_process(struct goog_touch_interface *gti, bool reset_data)
 		if (ret != 0 || frame == NULL) {
 			if (gti->offload.offload_running && gti->debug_warning_limit) {
 				gti->debug_warning_limit--;
-				GOOG_WARN(gti, "failed to reserve a frame(ret %d)!\n", ret);
+				GOOG_WARN(gti, "Fail to reserve frame, ret=%d IDX=%llu!\n",
+					ret, gti->frame_index);
 			}
 			goog_offload_set_running(gti, false);
 			ret = -EBUSY;
@@ -3203,7 +3175,8 @@ int goog_input_process(struct goog_touch_interface *gti, bool reset_data)
 			goog_offload_populate_frame(gti, *frame, reset_data);
 			ret = touch_offload_queue_frame(&gti->offload, *frame);
 			if (ret) {
-				GOOG_WARN(gti, "failed to queue reserved frame(ret %d)!\n", ret);
+				GOOG_WARN(gti, "Fail to queue frame, ret=%d IDX=%llu!\n",
+					ret, gti->frame_index);
 			} else {
 				gti->offload_frame = NULL;
 				input_flush = false;
@@ -4228,6 +4201,14 @@ int goog_get_lptw_triggered(struct goog_touch_interface *gti)
 	return gti->lptw_triggered;
 }
 EXPORT_SYMBOL_GPL(goog_get_lptw_triggered);
+
+static void gti_input_set_timestamp(struct goog_touch_interface *gti, ktime_t timestamp)
+{
+	if (gti) {
+		input_set_timestamp(gti->vendor_input_dev, timestamp);
+		gti->input_dev_mono_ktime = timestamp;
+	}
+}
 
 static irqreturn_t gti_irq_handler(int irq, void *data)
 {

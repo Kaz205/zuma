@@ -14,19 +14,20 @@
 
 #include "bigo_slc.h"
 
-#define SID_S3_TEMPORAL 3
-#define SID_COMP_INFO 6
-#define SID_S4_SECONDARY_COLBUF 19
-#define SID_S4_COMP_TILE_COL 20
-#define SID_S4_CDEC_TILE_COL 21
-
-#define SID_ENC_RD_SERV_S1_RAW_PIX 1
-#define SID_ENC_RD_SERV_REF_CACHE 2
-#define SID_ENC_RD_SERV_COMP_INFO 6
-#define RD_SERV_S4_CDEF_TILE_COL 21
-#define RD_SERV_S4_CDEF_DIR_TILE_COL 26
-#define RD_SERV_S3_TEMPORAL 3
-
+#define RD_S1_RAW_PIX 1
+#define RD_REF_CACHE 2
+#define RD_S3_TEMPORAL 3
+#define RD_S4_LEFT_COL_LF 5
+#define RD_COMP_INFO 6
+#define RD_S4_SECONDARY_COLBUF 19
+#define RD_S4_COMP_TILE_COL 20
+#define RD_S4_CDEF_TILE_COL 21
+#define RD_S4_SUPERRES_TILE_COL 22
+#define RD_S4_CTRL_INFO_TILE_COL 23
+#define RD_S4_LR_PARAMS_TILE_COL 24
+#define RD_S4_FILM_GRAIN_TILE_COL 25
+#define RD_S4_CDEF_DIR_TILE_COL 26
+#define WR_S4_RECON_PIX 3
 
 void bigo_bypass_ssmt_pid(struct bigo_core *core, bool dec_mode)
 {
@@ -39,21 +40,30 @@ void bigo_bypass_ssmt_pid(struct bigo_core *core, bool dec_mode)
 	if (!core->slc.ssmt_pid_base)
 		return;
 
+	if (dec_mode) {
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S3_TEMPORAL);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S4_LEFT_COL_LF);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_COMP_INFO);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S4_SECONDARY_COLBUF);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S4_COMP_TILE_COL);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S4_CDEF_TILE_COL);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S4_SUPERRES_TILE_COL);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S4_CTRL_INFO_TILE_COL);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S4_LR_PARAMS_TILE_COL);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S4_FILM_GRAIN_TILE_COL);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S4_CDEF_DIR_TILE_COL);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_REF_CACHE);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x200 + 0x4 * WR_S4_RECON_PIX);
+	} else {
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S1_RAW_PIX);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_REF_CACHE);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_COMP_INFO);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S4_CDEF_TILE_COL);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S4_CDEF_DIR_TILE_COL);
+		writel(core->slc.pid, core->slc.ssmt_pid_base + 0x4 * RD_S3_TEMPORAL);
+	}
 	for (sid = 0; sid < 32; sid++) {
 		offset = sid * 4;
-		if (dec_mode) {
-			if (sid == SID_S3_TEMPORAL || sid == SID_COMP_INFO ||
-				sid == SID_S4_SECONDARY_COLBUF || sid == SID_S4_COMP_TILE_COL ||
-				sid == SID_S4_CDEC_TILE_COL) {
-				writel(core->slc.pid, core->slc.ssmt_pid_base + offset);
-			}
-		} else {
-			if (sid == SID_ENC_RD_SERV_S1_RAW_PIX || sid == SID_ENC_RD_SERV_REF_CACHE ||
-				sid == SID_ENC_RD_SERV_COMP_INFO || sid == RD_SERV_S4_CDEF_TILE_COL ||
-				sid == RD_SERV_S4_CDEF_DIR_TILE_COL || sid == RD_SERV_S3_TEMPORAL) {
-				writel(core->slc.pid, core->slc.ssmt_pid_base + offset);
-			}
-		}
 		writel(0xe, core->slc.ssmt_pid_base + cache_off + offset);
 		writel(0x80000000, core->slc.ssmt_pid_base + rd_alloc_off + offset);
 		writel(0x80000000, core->slc.ssmt_pid_base + wr_alloc_off + offset);

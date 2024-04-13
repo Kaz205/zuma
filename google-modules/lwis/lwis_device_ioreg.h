@@ -34,6 +34,7 @@ struct lwis_ioreg_list {
 struct lwis_ioreg_device {
 	struct lwis_device base_dev;
 	struct lwis_ioreg_list reg_list;
+	bool iommu_best_fit_algo;
 };
 
 int lwis_ioreg_device_init(void);

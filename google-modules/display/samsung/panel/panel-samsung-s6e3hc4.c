@@ -562,7 +562,7 @@ static void s6e3hc4_update_refresh_mode(struct exynos_panel *ctx,
 	 */
 	ctx->panel_idle_vrefresh = idle_vrefresh;
 	s6e3hc4_update_panel_feat(ctx, pmode, false);
-	schedule_work(&ctx->state_notify);
+	notify_panel_mode_changed(ctx, false);
 }
 
 static void s6e3hc4_change_frequency(struct exynos_panel *ctx,
@@ -1117,6 +1117,14 @@ static const u32 s6e3hc4_bl_range[] = {
 	94, 180, 270, 360, 2047
 };
 
+static const int s6e3hc4_vrefresh_range[] = {
+	10, 30, 60, 120
+};
+
+static const int s6e3hc4_lp_vrefresh_range[] = {
+	10, 30
+};
+
 static const struct exynos_panel_mode s6e3hc4_modes[] = {
 	{
 		.mode = {
@@ -1422,8 +1430,12 @@ const struct exynos_panel_desc samsung_s6e3hc4 = {
 	.bl_num_ranges = ARRAY_SIZE(s6e3hc4_bl_range),
 	.modes = s6e3hc4_modes,
 	.num_modes = ARRAY_SIZE(s6e3hc4_modes),
+	.vrefresh_range = s6e3hc4_vrefresh_range,
+	.vrefresh_range_count = ARRAY_SIZE(s6e3hc4_vrefresh_range),
 	.lp_mode = s6e3hc4_lp_modes,
 	.lp_mode_count = ARRAY_SIZE(s6e3hc4_lp_modes),
+	.lp_vrefresh_range = s6e3hc4_lp_vrefresh_range,
+	.lp_vrefresh_range_count = ARRAY_SIZE(s6e3hc4_lp_vrefresh_range),
 	.lp_cmd_set = &s6e3hc4_lp_cmd_set,
 	.binned_lp = s6e3hc4_binned_lp,
 	.num_binned_lp = ARRAY_SIZE(s6e3hc4_binned_lp),

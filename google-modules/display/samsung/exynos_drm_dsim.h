@@ -33,6 +33,7 @@ enum dsim_state {
 	DSIM_STATE_SUSPEND,	/* inactive */
 	DSIM_STATE_BYPASS,	/* bypass mode, dsim shouldn't be used */
 	DSIM_STATE_HANDOVER,
+	DSIM_STATE_MISSING,	/* no panel identified */
 };
 
 enum dsim_dual_dsi {
@@ -73,7 +74,6 @@ struct dsim_device {
 	struct device *dev;
 	struct drm_bridge *panel_bridge;
 	struct mipi_dsi_device *dsi_device;
-	struct mipi_dsi_device_info dsi_device_info;
 	struct device_link *dev_link;
 
 	enum exynos_drm_output_type output_type;

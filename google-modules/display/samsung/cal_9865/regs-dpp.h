@@ -66,7 +66,7 @@
 #define IDMA_READ_SLAVE_ERR_MASK		(1 << 4)
 #define IDMA_DEADLOCK_MASK			(1 << 2)
 #define IDMA_FRAME_DONE_MASK			(1 << 1)
-#define IDMA_ALL_IRQ_MASK			(0xDFB << 16)
+#define IDMA_ALL_IRQ_MASK			(0xDFB << 1)
 #define IDMA_IRQ_ENABLE				(1 << 0)
 
 

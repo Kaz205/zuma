@@ -25,6 +25,7 @@
 #define SSMT_NS_READ_PID(n)	(0x4000 + 4 * (n))
 #define SSMT_NS_WRITE_PID(n)	(0x4200 + 4 * (n))
 
+extern enum AOC_FW_STATE aoc_state;
 extern struct platform_device *aoc_platform_device;
 extern struct resource *aoc_sram_resource;
 extern struct mutex aoc_service_lock;
@@ -436,13 +437,7 @@ EXPORT_SYMBOL_GPL(aoc_unlocked_ioctl_handle_ion_fd);
 
 static irqreturn_t watchdog_int_handler(int irq, void *dev)
 {
-	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
-
-	/* AP shouldn't access AoC registers to clear the IRQ. */
-	/* Mask the IRQ until the IRQ gets cleared by AoC reset during SSR. */
-	disable_irq_nosync(irq);
-	schedule_work(&prvdata->watchdog_work);
-
+	trigger_aoc_ssr(false, NULL);
 	return IRQ_HANDLED;
 }
 
@@ -538,8 +533,11 @@ void configure_crash_interrupts(struct aoc_prvdata *prvdata, bool enable)
 		enable_irq(prvdata->sysmmu_secure_irq);
 		enable_irq(prvdata->watchdog_irq);
 	} else {
-		disable_irq(prvdata->sysmmu_nonsecure_irq);
-		disable_irq(prvdata->sysmmu_secure_irq);
+		disable_irq_nosync(prvdata->sysmmu_nonsecure_irq);
+		disable_irq_nosync(prvdata->sysmmu_secure_irq);
+		/* Need to disable it to let APM handle it once we
+		 * retrigger it in aoc_watchdog_restart.
+		 */
 		disable_irq_nosync(prvdata->watchdog_irq);
 	}
 }

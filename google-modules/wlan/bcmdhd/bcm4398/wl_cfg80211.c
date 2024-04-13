@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -7642,10 +7642,14 @@ wl_sync_fw_assoc_states(struct bcm_cfg80211 *cfg,
 void
 wl_pkt_mon_start(struct bcm_cfg80211 *cfg, struct net_device *dev)
 {
+	dhd_pub_t *dhdp =  (dhd_pub_t *)(cfg->pub);
+#ifdef DHD_PKT_MON_DUAL_STA
+	DHD_DBG_PKT_MON_START(dhdp, dhd_net2idx(dhdp->info, dev));
+#else
 	if ((dev == bcmcfg_to_prmry_ndev(cfg))) {
-		dhd_pub_t *dhdp =  (dhd_pub_t *)(cfg->pub);
 		DHD_DBG_PKT_MON_START(dhdp);
 	}
+#endif /* DHD_PKT_MON_DUAL_STA */
 }
 #endif /* DBG_PKT_MON && BCMDONGLEHOST */
 
@@ -7840,9 +7844,13 @@ wl_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 
 #ifdef DBG_PKT_MON
 	/* Start pkt monitor here to avoid probe auth and assoc lost */
+#ifdef DHD_PKT_MON_DUAL_STA
+	wl_pkt_mon_start(cfg, dev);
+#else
 	if (dev == bcmcfg_to_prmry_ndev(cfg)) {
 		wl_pkt_mon_start(cfg, dev);
 	}
+#endif /* DHD_PKT_MON_DUAL_STA */
 #endif /* DBG_PKT_MON */
 	if (assoc_info.reassoc) {
 		/* Handle roam to same ESS */
@@ -8003,9 +8011,13 @@ wl_cfg80211_disconnect(struct wiphy *wiphy, struct net_device *dev,
 	if (act) {
 #ifdef DBG_PKT_MON
 		/* Stop packet monitor */
+#ifdef DHD_PKT_MON_DUAL_STA
+		DHD_DBG_PKT_MON_STOP(dhdp, dhd_net2idx(dhdp->info, dev));
+#else
 		if (dev == bcmcfg_to_prmry_ndev(cfg)) {
 			DHD_DBG_PKT_MON_STOP(dhdp);
 		}
+#endif /* DHD_PKT_MON_DUAL_STA */
 #endif /* DBG_PKT_MON */
 		/*
 		* Cancel ongoing scan to sync up with sme state machine of cfg80211.
@@ -10092,6 +10104,14 @@ wl_apply_per_sta_conn_suspend_settings(struct bcm_cfg80211 *cfg,
 		}
 	}
 #endif /* CONFIG_SILENT_ROAM */
+
+#ifdef APF
+	if (suspend) {
+		dhd_dev_apf_enable_filter(dev);
+	} else {
+		dhd_dev_apf_disable_filter(dev);
+	}
+#endif /* APF */
 	return BCME_OK;
 }
 
@@ -11046,6 +11066,7 @@ wl_cfg80211_send_action_frame(struct wiphy *wiphy, struct net_device *dev,
 #ifdef BCMDONGLEHOST
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
 #endif /* BCMDONGLEHOST */
+	u8 gas_frame_type = WL_PUB_AF_STYPE_INVALID;
 
 	int32 requested_dwell = af_params->dwell_time;
 
@@ -11098,7 +11119,7 @@ wl_cfg80211_send_action_frame(struct wiphy *wiphy, struct net_device *dev,
 				cfg->need_wait_afrx = false;
 			}
 		} else if (wl_cfg80211_is_dpp_gas_action(
-				(void *)action_frame->data, action_frame->len)) {
+				(void *)action_frame->data, action_frame->len, &gas_frame_type)) {
 			config_af_params.max_tx_retry = WL_AF_TX_MAX_RETRY;
 			af_params->dwell_time = WL_MED_DWELL_TIME;
 			cfg->need_wait_afrx = true;
@@ -11107,6 +11128,9 @@ wl_cfg80211_send_action_frame(struct wiphy *wiphy, struct net_device *dev,
 			if (requested_dwell == 0) {
 				/* Use minimal dwell to take care of Ack */
 				af_params->dwell_time = WL_MIN_DWELL_TIME;
+				if (gas_frame_type == WL_PUB_AF_GAS_IRESP) {
+					af_params->dwell_time = WL_GAS_IRESP_DWELL_TIME;
+				}
 			}
 		} else if ((action == P2P_PUB_AF_ACTION) &&
 			(action_frame_len >= sizeof(wifi_p2p_pub_act_frame_t))) {
@@ -11192,10 +11216,8 @@ wl_cfg80211_send_action_frame(struct wiphy *wiphy, struct net_device *dev,
 	}
 #endif
 
-	/* if scan is ongoing, abort current scan. */
-	if (wl_get_drv_status_all(cfg, SCANNING)) {
-		wl_cfgscan_cancel_scan(cfg);
-	}
+	/* abort current scan/listen . */
+	wl_cfgscan_cancel_scan(cfg);
 
 	/* Abort P2P listen */
 	if (discover_cfgdev(cfgdev, cfg)) {
@@ -14378,10 +14400,12 @@ wl_post_linkdown_ops(struct bcm_cfg80211 *cfg,
 	s32 ret = BCME_OK;
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 	char cmd[WLC_IOCTL_SMLEN];
+	int ifidx;
 
 	/* Common Code for connect failure & link down */
 	BCM_REFERENCE(dhdp);
 	BCM_REFERENCE(cmd);
+	BCM_REFERENCE(ifidx);
 
 	WL_INFORM_MEM(("link down. connection state bit status: [%u:%u:%u:%u]\n",
 		wl_get_drv_status(cfg, CONNECTING, ndev),
@@ -14401,10 +14425,15 @@ wl_post_linkdown_ops(struct bcm_cfg80211 *cfg,
 	wl_clr_drv_status(cfg, DISCONNECTING, ndev);
 
 #ifdef DBG_PKT_MON
+#ifdef DHD_PKT_MON_DUAL_STA
+	ifidx = dhd_net2idx(dhdp->info, ndev);
+	DHD_DBG_PKT_MON_STOP(dhdp, ifidx);
+#else
 	if (ndev == bcmcfg_to_prmry_ndev(cfg)) {
 		/* Stop packet monitor */
 		DHD_DBG_PKT_MON_STOP(dhdp);
 	}
+#endif /* DHD_PKT_MON_DUAL_STA */
 #endif /* DHD_PKT_MON */
 
 	/* Flush preserve logs */
@@ -15906,8 +15935,11 @@ wl_notify_roam_prep_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 	u32 status = ntoh32(e->status);
 	u32 reason = ntoh32(e->reason);
+	int ifidx;
 
 	BCM_REFERENCE(sec);
+	BCM_REFERENCE(ifidx);
+
 	ndev = cfgdev_to_wlc_ndev(cfgdev, cfg);
 
 	if (status == WLC_E_STATUS_SUCCESS && reason != WLC_E_REASON_INITIAL_ASSOC) {
@@ -15929,10 +15961,16 @@ wl_notify_roam_prep_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 #endif /* CONFIG_SILENT_ROAM */
 
 #ifdef DBG_PKT_MON
+#ifdef DHD_PKT_MON_DUAL_STA
+	ifidx = dhd_net2idx(dhdp->info, ndev);
+	DHD_DBG_PKT_MON_STOP(dhdp, ifidx);
+	DHD_DBG_PKT_MON_START(dhdp, ifidx);
+#else
 	if (ndev == bcmcfg_to_prmry_ndev(cfg)) {
 		DHD_DBG_PKT_MON_STOP(dhdp);
 		DHD_DBG_PKT_MON_START(dhdp);
 	}
+#endif /* DHD_PKT_MON_DUAL_STA */
 #endif /* DBG_PKT_MON */
 #ifdef DHD_LOSSLESS_ROAMING
 	sec = wl_read_prof(cfg, ndev, WL_PROF_SEC);
@@ -17142,9 +17180,11 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	u8 bsscfgidx;
 	u32 mgmt_frame_len;
 	chanspec_t chspec;
+	u8 gas_frame_type = WL_PUB_AF_STYPE_INVALID;
 #if defined(BCMDONGLEHOST) && defined(TDLS_MSG_ONLY_WFD) && defined(WLTDLS)
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 #endif /* BCMDONGLEHOST && TDLS_MSG_ONLY_WFD && WLTDLS */
+
 	if (ntoh32(e->datalen) < sizeof(wl_event_rx_frame_data_t)) {
 		WL_ERR(("wrong datalen:%d\n", ntoh32(e->datalen)));
 		return -EINVAL;
@@ -17247,7 +17287,7 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 					(&mgmt_frame[DOT11_MGMT_HDR_LEN]);
 			(void) p2p_act_frm;
 		} else if (wl_cfg80211_is_dpp_gas_action(&mgmt_frame[DOT11_MGMT_HDR_LEN],
-			mgmt_frame_len - DOT11_MGMT_HDR_LEN)) {
+			mgmt_frame_len - DOT11_MGMT_HDR_LEN, &gas_frame_type)) {
 			wl_clr_drv_status(cfg, WAITING_NEXT_ACT_FRM, ndev);
 
 			/* Stop waiting for next AF. */
@@ -26027,6 +26067,10 @@ get_dpp_pa_ftype(enum wl_dpp_ftype ftype)
 			return "DPP_AUTH_RESP";
 		case DPP_AUTH_CONF:
 			return "DPP_AUTH_CONF";
+		case DPP_CONFIGURATION_RESULT:
+			return "DPP_CONFIGURATION_RESULT";
+		case DPP_CONFIGURATION_STATUS_RESULT:
+			return "DPP_CONFIGURATION_STATUS_RESULT";
 		default:
 			return "Unkown DPP frame";
 	}
@@ -26068,7 +26112,7 @@ bool wl_cfg80211_find_gas_subtype(u8 subtype, u16 adv_id, u8* data, s32 len)
 	return false;
 }
 
-bool wl_cfg80211_is_dpp_gas_action(void *frame, u32 frame_len)
+bool wl_cfg80211_is_dpp_gas_action(void *frame, u32 frame_len, u8 *gas_frame_type)
 {
 	wl_dpp_gas_af_t *act_frm = (wl_dpp_gas_af_t *)frame;
 	u32 len;
@@ -26084,10 +26128,12 @@ bool wl_cfg80211_is_dpp_gas_action(void *frame, u32 frame_len)
 		ie = (bcm_tlv_t *)act_frm->query_data;
 		/* We are interested only in MNG ADV ID. Skip any other id. */
 		ie = bcm_parse_tlvs(ie, len, DOT11_MNG_ADVERTISEMENT_ID);
+		*gas_frame_type = WL_PUB_AF_GAS_IREQ;
 	} else if (act_frm->action == WL_PUB_AF_GAS_IRESP) {
 		ie = (bcm_tlv_t *)&act_frm->query_data[WL_GAS_RESP_OFFSET];
 		/* We are interested only in MNG ADV ID. Skip any other id. */
 		ie = bcm_parse_tlvs(ie, len, DOT11_MNG_ADVERTISEMENT_ID);
+		*gas_frame_type = WL_PUB_AF_GAS_IRESP;
 	} else {
 		return false;
 	}

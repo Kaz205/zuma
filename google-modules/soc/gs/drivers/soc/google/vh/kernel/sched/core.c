@@ -10,6 +10,7 @@
 
 #include "sched_priv.h"
 #include "sched_events.h"
+#include <performance/gs_perf_mon/gs_perf_mon.h>
 
 struct vendor_group_list vendor_group_list[VG_MAX];
 
@@ -17,7 +18,7 @@ struct vendor_group_list vendor_group_list[VG_MAX];
 extern void update_uclamp_stats(int cpu, u64 time);
 #endif
 
-extern int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool sync_boost,
+extern int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu,
 		cpumask_t *valid_mask);
 /*
  * Ignore uclamp_min for CFS tasks if
@@ -120,12 +121,22 @@ void vh_scheduler_tick_pixel_mod(void *data, struct rq *rq)
 
 	/* Check if an RT task needs to move to a better fitting CPU */
 	check_migrate_rt_task(rq, rq->curr);
+
+	/*
+	 * Update our performance counters for profiling per
+	 * cpu performance data. Also checks if we need to wake
+	 * up a helper thread to update memory frequencies.
+	 */
+	gs_perf_mon_tick_update_counters();
 }
 
 void rvh_enqueue_task_pixel_mod(void *data, struct rq *rq, struct task_struct *p, int flags)
 {
 	struct vendor_task_struct *vp = get_vendor_task_struct(p);
 	int group;
+
+	if (!static_branch_unlikely(&enqueue_dequeue_ready))
+		return;
 
 	raw_spin_lock(&vp->lock);
 	if (vp->queued_to_list == LIST_NOT_QUEUED) {
@@ -148,6 +159,9 @@ void rvh_dequeue_task_pixel_mod(void *data, struct rq *rq, struct task_struct *p
 {
 	struct vendor_task_struct *vp = get_vendor_task_struct(p);
 	int group;
+
+	if (!static_branch_unlikely(&enqueue_dequeue_ready))
+		return;
 
 #if IS_ENABLED(CONFIG_UCLAMP_STATS)
 	if (rq->nr_running == 1)
@@ -184,7 +198,7 @@ void rvh_set_cpus_allowed_by_task(void *data, const struct cpumask *cpu_valid_ma
 	 */
 	if ((p->on_cpu || p->__state == TASK_WAKING || task_on_rq_queued(p)) &&
 		!cpumask_test_cpu(task_cpu(p), new_mask)) {
-		best_energy_cpu = find_energy_efficient_cpu(p, task_cpu(p), false, &valid_mask);
+		best_energy_cpu = find_energy_efficient_cpu(p, task_cpu(p), &valid_mask);
 
 		if (best_energy_cpu != -1)
 			*dest_cpu = best_energy_cpu;

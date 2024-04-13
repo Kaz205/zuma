@@ -1,7 +1,7 @@
 /*
  * DHD debugability Linux os layer
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -457,62 +457,114 @@ dhd_os_push_push_ring_data(dhd_pub_t *dhdp, int ring_id, void *data, int32 data_
 int
 dhd_os_dbg_attach_pkt_monitor(dhd_pub_t *dhdp)
 {
-	return dhd_dbg_attach_pkt_monitor(dhdp, dhd_os_dbg_monitor_tx_pkts,
-		dhd_os_dbg_monitor_tx_status, dhd_os_dbg_monitor_rx_pkts);
+	int i, ret;
+	for (i = 0; i < PKT_MON_IF_MAX; i++) {
+		ret = dhd_dbg_attach_pkt_monitor(dhdp, i, dhd_os_dbg_monitor_tx_pkts,
+			dhd_os_dbg_monitor_tx_status, dhd_os_dbg_monitor_rx_pkts);
+		if (unlikely(ret)) {
+			DHD_ERROR(("%s - failed to attach pkt mon idx:%d\n", __func__, i));
+			return ret;
+		}
+	}
+	return BCME_OK;
 }
 
 int
-dhd_os_dbg_start_pkt_monitor(dhd_pub_t *dhdp)
+dhd_os_dbg_start_pkt_monitor(dhd_pub_t *dhdp, int ifidx)
 {
-	return dhd_dbg_start_pkt_monitor(dhdp);
+	return dhd_dbg_start_pkt_monitor(dhdp, ifidx);
 }
 
 int
-dhd_os_dbg_monitor_tx_pkts(dhd_pub_t *dhdp, void *pkt, uint32 pktid,
+dhd_os_dbg_monitor_tx_pkts(dhd_pub_t *dhdp, int ifidx, void *pkt, uint32 pktid,
 	frame_type type, uint8 mgmt_acked, bool aml)
 {
-	return dhd_dbg_monitor_tx_pkts(dhdp, pkt, pktid, type, mgmt_acked,
+	return dhd_dbg_monitor_tx_pkts(dhdp, ifidx, pkt, pktid, type, mgmt_acked,
 		aml);
 }
 
 int
-dhd_os_dbg_monitor_tx_status(dhd_pub_t *dhdp, void *pkt, uint32 pktid,
+dhd_os_dbg_monitor_tx_status(dhd_pub_t *dhdp, int ifidx, void *pkt, uint32 pktid,
 	uint16 status)
 {
-	return dhd_dbg_monitor_tx_status(dhdp, pkt, pktid, status);
+	return dhd_dbg_monitor_tx_status(dhdp, ifidx, pkt, pktid, status);
 }
 
 int
-dhd_os_dbg_monitor_rx_pkts(dhd_pub_t *dhdp, void *pkt, frame_type type,
+dhd_os_dbg_monitor_rx_pkts(dhd_pub_t *dhdp, int ifidx, void *pkt, frame_type type,
 	bool aml)
 {
-	return dhd_dbg_monitor_rx_pkts(dhdp, pkt, type, aml);
+	return dhd_dbg_monitor_rx_pkts(dhdp, ifidx, pkt, type, aml);
 }
 
 int
-dhd_os_dbg_stop_pkt_monitor(dhd_pub_t *dhdp)
+dhd_os_dbg_stop_pkt_monitor(dhd_pub_t *dhdp, int ifidx)
 {
-	return dhd_dbg_stop_pkt_monitor(dhdp);
+	return dhd_dbg_stop_pkt_monitor(dhdp, ifidx);
+}
+
+#ifdef DHD_PKT_MON_DUAL_STA
+int
+dhd_os_dbg_attach_pkt_monitor_dev(dhd_pub_t *dhdp, struct net_device *ndev)
+{
+	int ifidx, ret;
+
+	ifidx = dhd_net2idx(dhdp->info, ndev);
+	if (ifidx == DHD_BAD_IF) {
+		DHD_ERROR(("%s: bad ifidx:%d\n", __FUNCTION__, ifidx));
+		return -EINVAL;
+	}
+
+	ret = dhd_dbg_attach_pkt_monitor(dhdp, ifidx, dhd_os_dbg_monitor_tx_pkts,
+		dhd_os_dbg_monitor_tx_status, dhd_os_dbg_monitor_rx_pkts);
+	if (unlikely(ret)) {
+		DHD_ERROR(("%s - failed to attach pkt mon idx:%d\n", __func__, ifidx));
+		return ret;
+	}
+	return BCME_OK;
 }
 
 int
-dhd_os_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp, void __user *user_buf,
-	uint16 req_count, uint16 *resp_count)
+dhd_os_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp, int ifidx,
+	void __user *user_buf, uint16 req_count, uint16 *resp_count)
 {
-	return dhd_dbg_monitor_get_tx_pkts(dhdp, user_buf, req_count, resp_count);
+	return dhd_dbg_monitor_get_tx_pkts(dhdp, ifidx, user_buf, req_count, resp_count);
 }
 
 int
-dhd_os_dbg_monitor_get_rx_pkts(dhd_pub_t *dhdp, void __user *user_buf,
-	uint16 req_count, uint16 *resp_count)
+dhd_os_dbg_monitor_get_rx_pkts(dhd_pub_t *dhdp, int ifidx,
+	void __user *user_buf, uint16 req_count, uint16 *resp_count)
 {
-	return dhd_dbg_monitor_get_rx_pkts(dhdp, user_buf, req_count, resp_count);
+	return dhd_dbg_monitor_get_rx_pkts(dhdp, ifidx, user_buf, req_count, resp_count);
 }
+#else
+int
+dhd_os_dbg_monitor_get_tx_pkts(dhd_pub_t *dhdp,
+	void __user *user_buf, uint16 req_count, uint16 *resp_count)
+{
+	return dhd_dbg_monitor_get_tx_pkts(dhdp, 0, user_buf, req_count, resp_count);
+}
+
+int
+dhd_os_dbg_monitor_get_rx_pkts(dhd_pub_t *dhdp,
+	void __user *user_buf, uint16 req_count, uint16 *resp_count)
+{
+	return dhd_dbg_monitor_get_rx_pkts(dhdp, 0, user_buf, req_count, resp_count);
+}
+#endif /* DHD_PKT_MON_DUAL_STA */
 
 int
 dhd_os_dbg_detach_pkt_monitor(dhd_pub_t *dhdp)
 {
-	return dhd_dbg_detach_pkt_monitor(dhdp);
+	int i, ret;
+	for (i = 0; i < PKT_MON_IF_MAX; i++) {
+		ret = dhd_dbg_detach_pkt_monitor(dhdp, i);
+		if (ret) {
+			DHD_ERROR(("%s - failed to detach pkt mon idx:%d\n", __func__, i));
+			return ret;
+		}
+	}
+	return BCME_OK;
 }
 #endif /* DBG_PKT_MON */
 

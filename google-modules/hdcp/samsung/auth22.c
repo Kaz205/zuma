@@ -126,6 +126,7 @@ int hdcp22_dplink_authenticate(void)
 				UPDATE_LINK_STATE(lk_data, LINK_ST_A7_VERIFY_RECEIVER_ID_LIST);
 			} else {
 				UPDATE_LINK_STATE(lk_data, LINK_ST_H1_TX_LOW_VALUE_CONTENT);
+				return -EAGAIN;
 			}
 			break;
 		case LINK_ST_A7_VERIFY_RECEIVER_ID_LIST:
@@ -133,6 +134,7 @@ int hdcp22_dplink_authenticate(void)
 				UPDATE_LINK_STATE(lk_data, LINK_ST_A9_CONTENT_STREAM_MGT);
 			} else {
 				UPDATE_LINK_STATE(lk_data, LINK_ST_H1_TX_LOW_VALUE_CONTENT);
+				return -EAGAIN;
 			}
 			break;
 		case LINK_ST_A9_CONTENT_STREAM_MGT:
@@ -168,12 +170,14 @@ int hdcp22_dplink_handle_irq(void) {
 
 	if (HDCP_2_2_DP_RXSTATUS_LINK_FAILED(rxstatus)) {
 		hdcp_info("integrity check fail.\n");
+		hdcp22_dplink_abort();
 		hdcp_tee_disable_enc();
-		return 0;
+		return -EFAULT;
 	} else if (HDCP_2_2_DP_RXSTATUS_REAUTH_REQ(rxstatus)) {
 		hdcp_info("reauth requested.\n");
+		hdcp22_dplink_abort();
 		hdcp_tee_disable_enc();
-		return -EAGAIN;
+		return -EFAULT;
 	} else if (HDCP_2_2_DP_RXSTATUS_PAIRING(rxstatus)) {
 		hdcp_info("pairing avaible\n");
 		lkd.pairing_ready = 1;

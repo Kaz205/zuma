@@ -10,10 +10,6 @@
 	size = <0x00C00000>; /* 12MB */
 };
 
-&farawimg {
-	size = <0x0CC00000>; /* 204MB */
-};
-
 &faprev {
 	size = <0x01800000>; /* 24MB */
 };

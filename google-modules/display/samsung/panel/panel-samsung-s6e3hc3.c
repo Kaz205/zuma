@@ -582,7 +582,7 @@ static bool s6e3hc3_set_self_refresh(struct exynos_panel *ctx, bool enable)
 	}
 	EXYNOS_DCS_WRITE_TABLE(ctx, lock_cmd_f0);
 
-	schedule_work(&ctx->state_notify);
+	notify_panel_mode_changed(ctx, false);
 
 	DPU_ATRACE_END(__func__);
 
@@ -1061,6 +1061,14 @@ static const u32 s6e3hc3_bl_range[] = {
 	94, 180, 270, 360, 2047
 };
 
+static const int s6e3hc3_vrefresh_range[] = {
+	10, 30, 60, 120
+};
+
+static const int s6e3hc3_lp_vrefresh_range[] = {
+	10, 30
+};
+
 static const struct exynos_panel_mode s6e3hc3_modes[] = {
 	{
 		.mode = {
@@ -1296,9 +1304,13 @@ const struct exynos_panel_desc samsung_s6e3hc3 = {
 	.bl_num_ranges = ARRAY_SIZE(s6e3hc3_bl_range),
 	.modes = s6e3hc3_modes,
 	.num_modes = ARRAY_SIZE(s6e3hc3_modes),
+	.vrefresh_range = s6e3hc3_vrefresh_range,
+	.vrefresh_range_count = ARRAY_SIZE(s6e3hc3_vrefresh_range),
 	.off_cmd_set = &s6e3hc3_off_cmd_set,
 	.lp_mode = &s6e3hc3_lp_mode,
 	.lp_cmd_set = &s6e3hc3_lp_cmd_set,
+	.lp_vrefresh_range = s6e3hc3_lp_vrefresh_range,
+	.lp_vrefresh_range_count = ARRAY_SIZE(s6e3hc3_lp_vrefresh_range),
 	.binned_lp = s6e3hc3_binned_lp,
 	.num_binned_lp = ARRAY_SIZE(s6e3hc3_binned_lp),
 	.is_panel_idle_supported = true,

@@ -1,7 +1,7 @@
 /*
  * Common function shared by Linux WEXT, cfg80211 and p2p drivers
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -817,7 +817,6 @@ int wldev_get_datarate(struct net_device *dev, int *datarate)
 
 extern chanspec_t
 wl_chspec_driver_to_host(chanspec_t chanspec);
-#define WL_EXTRA_BUF_MAX 2048
 int wldev_get_mode(
 	struct net_device *dev, uint8 *cap, uint8 caplen)
 {
