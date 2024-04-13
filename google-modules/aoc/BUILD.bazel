@@ -20,9 +20,9 @@ kernel_module(
     srcs = glob([
         "**/*.c",
         "**/*.h",
+    ]) + [
         "Kbuild",
         "Makefile",
-    ]) + [
         "//private/google-modules/aoc_ipc:sources",
         "//private/google-modules/soc/gs:gs_soc_headers",
         "//private/google-modules/trusty:headers",
@@ -33,6 +33,7 @@ kernel_module(
         "aoc_control_dev.ko",
         "aoc_core.ko",
         "aoc_tbn_service_dev.ko",
+        "aoc_unit_test_dev.ko",
         "aoc_uwb_platform_drv.ko",
         "aoc_uwb_service_dev.ko",
         "mailbox-wc.ko",

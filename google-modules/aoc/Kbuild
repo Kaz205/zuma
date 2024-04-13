@@ -18,5 +18,6 @@ obj-$(CONFIG_AOC_CONTROL_DRIVER)	+= aoc_control_dev.o
 obj-$(CONFIG_AOC_CHAN_DRIVER)		+= aoc_channel_dev.o
 obj-$(CONFIG_AOC_UWB_DRIVER)		+= aoc_uwb_platform_drv.o aoc_uwb_service_dev.o
 obj-$(CONFIG_AOC_TBN_DRIVER)		+= aoc_tbn_service_dev.o
+obj-$(CONFIG_AOC_UNIT_TEST_DRIVER) 	+= aoc_unit_test_dev.o
 
 headers-y	:= uapi/aoc.h

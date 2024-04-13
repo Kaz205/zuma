@@ -132,7 +132,7 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 					SNDRV_PCM_FMTBIT_FLOAT_LE |
 					SNDRV_PCM_FMTBIT_S32_LE,
 			.channels_min = 1,
-			.channels_max = 2,
+			.channels_max = 6,
 		},
 		.name = "EP4 PB",
 		.id = IDX_EP4_RX,

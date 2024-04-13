@@ -180,14 +180,10 @@ static struct snd_pcm_hardware snd_aoc_playback_hw = {
 	.rate_min = 8000,
 	.rate_max = 96000,
 	.channels_min = 1,
-	.channels_max = 4,
+	.channels_max = 6,
 	.buffer_bytes_max = 16384 * 6,
 	.period_bytes_min = 16,
-#if IS_ENABLED(CONFIG_SOC_ZUMA)
-	.period_bytes_max = 7680,
-#else
 	.period_bytes_max = 11520,
-#endif
 	.periods_min = 2,
 	.periods_max = 1024 * 6,
 };

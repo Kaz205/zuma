@@ -52,7 +52,8 @@ enum AOC_FW_STATE {
 	AOC_STATE_OFFLINE,
 	AOC_STATE_FIRMWARE_LOADED,
 	AOC_STATE_STARTING,
-	AOC_STATE_ONLINE
+	AOC_STATE_ONLINE,
+	AOC_STATE_SSR
 };
 
 struct mbox_slot {
@@ -289,6 +290,8 @@ u32 dt_property(struct device_node *node, const char *key);
 void configure_crash_interrupts(struct aoc_prvdata *prvdata, bool enable);
 
 void notify_timeout_aoc_status(void);
+
+void trigger_aoc_ssr(bool ap_triggered_reset, char* reset_reason);
 
 #define AOC_SERVICE_NAME_LENGTH 32
 
