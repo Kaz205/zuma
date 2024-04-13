@@ -260,7 +260,6 @@ static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 		return ret;
 	}
 
-	/* Create I2C Bus Manager */
 	ret = lwis_i2c_bus_manager_create(i2c_dev);
 	if (ret) {
 		dev_err(i2c_dev->base_dev.dev, "Error in i2c bus manager creation\n");

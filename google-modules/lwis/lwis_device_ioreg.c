@@ -13,6 +13,7 @@
 #include "lwis_device_ioreg.h"
 
 #include <linux/device.h>
+#include <linux/dma-iommu.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -85,6 +86,15 @@ static int lwis_ioreg_device_setup(struct lwis_ioreg_device *ioreg_dev)
 	/* Non-device-tree init: Save for future implementation */
 	ret = -ENOSYS;
 #endif
+
+	if (ioreg_dev->iommu_best_fit_algo) {
+		ret = iommu_dma_enable_best_fit_algo(ioreg_dev->base_dev.k_dev);
+		if (ret) {
+			dev_warn(ioreg_dev->base_dev.dev, "Cannot enable IOMMU best fit algo\n");
+			/* Skip best fit algo error */
+			ret = 0;
+		}
+	}
 
 	return ret;
 }

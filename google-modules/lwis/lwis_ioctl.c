@@ -490,7 +490,6 @@ static int cmd_device_enable(struct lwis_client *lwis_client, struct lwis_cmd_pk
 	lwis_dev->enabled++;
 	lwis_client->is_enabled = true;
 	lwis_dev->is_suspended = lwis_dev->power_up_to_suspend;
-	dev_info(lwis_dev->dev, "Device enabled\n");
 exit_locked:
 	mutex_unlock(&lwis_dev->client_lock);
 	header->ret_code = ret;
@@ -1164,7 +1163,7 @@ static int construct_transaction_from_cmd(struct lwis_client *client, uint32_t c
 	struct lwis_transaction *k_transaction;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
-	k_transaction = kmalloc(sizeof(*k_transaction), GFP_KERNEL);
+	k_transaction = kzalloc(sizeof(struct lwis_transaction), GFP_KERNEL);
 	if (!k_transaction) {
 		return -ENOMEM;
 	}
@@ -1207,6 +1206,21 @@ static int construct_transaction_from_cmd(struct lwis_client *client, uint32_t c
 		dev_err(lwis_dev->dev, "Invalid command id for transaction\n");
 		ret = -EINVAL;
 		goto error_free_transaction;
+	}
+
+	if (k_transaction->info.trigger_condition.num_nodes < 0) {
+		dev_err(lwis_dev->dev, "Invalid trigger condition node count %lu\n",
+			k_transaction->info.trigger_condition.num_nodes);
+		ret = -EINVAL;
+		goto error_free_transaction;
+	}
+
+	if (k_transaction->info.trigger_condition.num_nodes > LWIS_TRIGGER_NODES_MAX_NUM) {
+		dev_err(lwis_dev->dev,
+			"Trigger condition contains %lu node, more than the limit of %d\n",
+			k_transaction->info.trigger_condition.num_nodes,
+			LWIS_TRIGGER_NODES_MAX_NUM);
+		return -EINVAL;
 	}
 
 	ret = construct_io_entry(client, k_transaction->info.io_entries,
@@ -1938,7 +1952,7 @@ static int handle_cmd_pkt(struct lwis_client *lwis_client, struct lwis_cmd_pkt *
 		mutex_unlock(&lwis_client->lock);
 		break;
 	default:
-		dev_err_ratelimited(lwis_dev->dev, "Unknown command id 0x%x\n", header->cmd_id);
+		dev_warn_ratelimited(lwis_dev->dev, "Unknown command id 0x%x\n", header->cmd_id);
 		header->ret_code = -ENOSYS;
 		ret = copy_pkt_to_user(lwis_dev, user_msg, (void *)header, sizeof(*header));
 	}

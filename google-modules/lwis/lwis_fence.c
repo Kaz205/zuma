@@ -159,6 +159,13 @@ int lwis_fence_signal(struct lwis_fence *lwis_fence, int status)
 		return -EFAULT;
 	}
 
+	if (status == LWIS_FENCE_STATUS_NOT_SIGNALED) {
+		/* Do not allow signaling with not-signaled status code. */
+		dev_err(lwis_fence->lwis_top_dev->dev,
+			"Cannot signal lwis_fence with invalid status : %d\n", status);
+		return -EINVAL;
+	}
+
 	spin_lock_irqsave(&lwis_fence->lock, flags);
 
 	if (lwis_fence->status != LWIS_FENCE_STATUS_NOT_SIGNALED) {
@@ -535,6 +542,13 @@ int lwis_initialize_transaction_fences(struct lwis_client *client,
 	int fd_or_err;
 
 	if (!transaction || !client) {
+		return -EINVAL;
+	}
+
+	if (info->trigger_condition.num_nodes > LWIS_TRIGGER_NODES_MAX_NUM) {
+		dev_err(lwis_dev->dev,
+			"Trigger condition contains %lu node, more than the limit of %d\n",
+			info->trigger_condition.num_nodes, LWIS_TRIGGER_NODES_MAX_NUM);
 		return -EINVAL;
 	}
 
