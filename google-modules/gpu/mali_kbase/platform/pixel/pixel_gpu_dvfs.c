@@ -19,6 +19,7 @@
 
 /* Mali core includes */
 #include <mali_kbase.h>
+#include <backend/gpu/mali_kbase_pm_event_log.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 
 /* Pixel integration includes */
@@ -50,8 +51,15 @@ static int gpu_dvfs_set_freq(struct kbase_device *kbdev, enum gpu_dvfs_clk_index
 {
 #if IS_ENABLED(CONFIG_CAL_IF)
 	struct pixel_context *pc = kbdev->platform_context;
+	struct kbase_pm_event_log_event *event = NULL;
 
 	lockdep_assert_held(&pc->pm.domain->access_lock);
+
+	event = kbase_pm_add_log_event(kbdev);
+	event->type = KBASE_PM_LOG_EVENT_DVFS_CHANGE;
+	event->dvfs.domain = domain;
+	event->dvfs.prev = pc->dvfs.table[pc->dvfs.level].clk[domain];
+	event->dvfs.next = pc->dvfs.table[level].clk[domain];
 
 	return cal_dfs_set_rate(pc->dvfs.clks[domain].cal_id, pc->dvfs.table[level].clk[domain]);
 #else
@@ -796,6 +804,36 @@ static int gpu_dvfs_update_asv_table(struct kbase_device *kbdev)
 	return dvfs_table_row_num;
 }
 
+#if MALI_USE_CSF
+static void gpu_dvfs_initialize_capacity_headroom(struct kbase_device *kbdev)
+{
+	struct device_node *np = kbdev->dev->of_node;
+	struct pixel_context *pc = kbdev->platform_context;
+
+	pc->dvfs.capacity_headroom = 0;
+	of_property_read_u32(np, "gpu_dvfs_capacity_headroom", &pc->dvfs.capacity_headroom);
+
+#define CAPACITY_HISTORY_DEFAULT_DEPTH 4
+	pc->dvfs.capacity_history_depth = CAPACITY_HISTORY_DEFAULT_DEPTH;
+	of_property_read_u8(np, "gpu_dvfs_capacity_history_depth", &pc->dvfs.capacity_history_depth);
+
+	if (pc->dvfs.capacity_history_depth == 0) {
+		dev_err(kbdev->dev,
+			"DVFS capacity history depth cannot be zero");
+		pc->dvfs.capacity_history_depth = CAPACITY_HISTORY_DEFAULT_DEPTH;
+	}
+#undef CAPACITY_HISTORY_DEFAULT_DEPTH
+
+	if (pc->dvfs.capacity_history_depth > ARRAY_SIZE(pc->dvfs.capacity_history)) {
+		dev_err(kbdev->dev,
+			"DVFS capacity history depth %u exceeds maximum depth %u",
+			(unsigned int)pc->dvfs.capacity_history_depth,
+			(unsigned int)ARRAY_SIZE(pc->dvfs.capacity_history));
+		pc->dvfs.capacity_history_depth = ARRAY_SIZE(pc->dvfs.capacity_history);
+	}
+}
+#endif
+
 /**
  * gpu_dvfs_set_initial_level() - Set the initial GPU clocks
  *
@@ -937,6 +975,10 @@ int gpu_dvfs_init(struct kbase_device *kbdev)
 	}
 	atomic_set(&pc->dvfs.util, 0);
 	atomic_set(&pc->dvfs.mcu_util, 0);
+
+#if MALI_USE_CSF
+	gpu_dvfs_initialize_capacity_headroom(kbdev);
+#endif /* MALI_USE_CSF */
 
 	/* Initialize DVFS governors */
 	ret = gpu_dvfs_governor_init(kbdev);

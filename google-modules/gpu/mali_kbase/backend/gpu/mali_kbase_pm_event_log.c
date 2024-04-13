@@ -24,11 +24,8 @@
 static inline u32 kbase_pm_next_log_event(
 	struct kbase_pm_event_log *log)
 {
-	u32 ret = log->last_event;
-	++ret;
-	ret %= EVENT_LOG_MAX;
-	log->last_event = ret;
-	return ret;
+	u32 ret = atomic_inc_return(&log->last_event);
+	return ret % EVENT_LOG_MAX;
 }
 
 struct kbase_pm_event_log_event *kbase_pm_add_log_event(
@@ -37,7 +34,6 @@ struct kbase_pm_event_log_event *kbase_pm_add_log_event(
 	struct kbase_pm_event_log *log = &kbdev->pm.backend.event_log;
 	struct kbase_pm_event_log_event *ret = NULL;
 
-	lockdep_assert_held(&kbdev->hwaccess_lock);
 	ret = &log->events[kbase_pm_next_log_event(log)];
 
 	memset(ret, 0, sizeof(*ret));
@@ -70,7 +66,7 @@ void kbase_pm_init_event_log(struct kbase_device *kbdev)
 {
 	struct kbase_pm_event_log_metadata *md =
 			&global_event_log_metadata;
-	kbdev->pm.backend.event_log.last_event = -1;
+	atomic_set(&kbdev->pm.backend.event_log.last_event, -1);
 	md->magic[0] = 'k';
 	md->magic[1] = 'p';
 	md->magic[2] = 'e';
