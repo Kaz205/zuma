@@ -17,6 +17,7 @@ extern bool task_may_not_preempt(struct task_struct *task, int cpu);
 extern int cpu_is_idle(int cpu);
 extern int sched_cpu_idle(int cpu);
 extern bool get_prefer_high_cap(struct task_struct *p);
+extern void set_prefer_high_cap(struct task_struct *p, bool val);
 
 extern int ___update_load_sum(u64 now, struct sched_avg *sa, unsigned long load,
 			      unsigned long runnable, int running);
@@ -181,6 +182,12 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 		overutilize[cpu] = !util_fits_cpu(util[cpu],
 						  rq_util_min, rq_util_max, cpu);
 
+		// Make cpus in CPD state the least preferred
+		if (is_idle && !get_cluster_enabled(pixel_cpu_to_cluster[cpu])) {
+			cpu_importance[cpu] = UINT_MAX;
+			exit_lat[cpu] = pixel_cpd_exit_latency[pixel_cpu_to_cluster[cpu]];
+		}
+
 		trace_sched_cpu_util_rt(cpu, capacity[cpu], capacity_of(cpu), util[cpu],
 					exit_lat[cpu], cpu_importance[cpu], task_fits[cpu],
 					task_fits_original[cpu], overutilize[cpu], is_idle);
@@ -188,10 +195,6 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 		// To prefer idle cpu than non-idle cpu
 		if (is_idle)
 			util[cpu] = 0;
-
-		// Make cpus in CPD state the least preferred
-		if (is_idle && !get_cluster_enabled(pixel_cpu_to_cluster[cpu]))
-			exit_lat[cpu] = pixel_cpd_exit_latency[pixel_cpu_to_cluster[cpu]];
 
 		if (task_fits[cpu]) {
 			fit_and_non_overutilized_found |= !overutilize[cpu];
@@ -397,17 +400,21 @@ void rvh_select_task_rq_rt_pixel_mod(void *data, struct task_struct *p, int prev
 	this_cpu = smp_processor_id();
 	this_cpu_rq = cpu_rq(this_cpu);
 
-	rt_task_fits_capacity(p, this_cpu, &fits, &fits_original);
 	/*
 	 * Respect the sync flag as long as the task can run on this CPU.
 	 */
-	if (should_honor_rt_sync(this_cpu_rq, p, sync) &&
-	    cpumask_test_cpu(this_cpu, p->cpus_ptr) && fits_original &&
-	    atomic_read(&get_vendor_rq_struct(this_cpu_rq)->num_adpf_tasks) == 0) {
-		*new_cpu = this_cpu;
-		sync_wakeup = true;
-		goto out_unlock;
+	if (should_honor_rt_sync(this_cpu_rq, p, sync)) {
+		rt_task_fits_capacity(p, this_cpu, &fits, &fits_original);
+
+		if (cpumask_test_cpu(this_cpu, p->cpus_ptr) && fits_original &&
+			atomic_read(&get_vendor_rq_struct(this_cpu_rq)->num_adpf_tasks) == 0) {
+			*new_cpu = this_cpu;
+			sync_wakeup = true;
+			goto out_unlock;
+		}
 	}
+
+	set_prefer_high_cap(p, sync && this_cpu >= pixel_cluster_start_cpu[1]);
 
 	target = find_lowest_rq(p, &backup_mask);
 
@@ -438,6 +445,8 @@ out_unlock:
 	rcu_read_unlock();
 out:
 	trace_sched_select_task_rq_rt(p, task_util(p), prev_cpu, target, *new_cpu, sync_wakeup);
+
+	set_prefer_high_cap(p, false);
 
 	return;
 }

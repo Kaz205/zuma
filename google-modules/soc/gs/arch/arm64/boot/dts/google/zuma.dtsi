@@ -573,49 +573,9 @@
 		 *     bit[6]   don't force optimal fetch on read  (0)
 		 *     bit[7]   don't force optimal fetch on write (0)
 		 */
-		gpu_g0_p0 {
-			/* vptid 40, max size 512KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x00001001 0x0 0x5>;
-		};
-		gpu_g0_p1 {
-			/* vptid 40, max size 1024KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x00005001 0x0 0x5>;
-		};
-		gpu_g0_p2 {
-			/* vptid 40, max size 1536KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x0000d001 0x0 0x5>;
-		};
-		gpu_g0_p3 {
-			/* vptid 40, max size 2048KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x0001d001 0x0 0x5>;
-		};
-		gpu_g0_p4 {
-			/* vptid 40, max size 3072KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x0003d001 0x0 0x5>;
-		};
-		gpu_g0_p5 {
-			/* vptid 40, max size 4096KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x0007d001 0x0 0x5>;
-		};
-		gpu_g0_p6 {
-			/* vptid 40, max size 6144KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x000fd001 0x0 0x5>;
-		};
-		gpu_g0_p7 {
-			/* vptid 40, max size 8192KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x001fd001 0x0 0x5>;
-		};
-		gpu_g0_p8 {
-			/* vptid 40, max size 12288KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x003fd001 0x0 0x5>;
-		};
-		gpu_g0_p9 {
+		gpu_write_alloc {
 			/* vptid 40, max size 16384KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x007fd001 0x0 0x5>;
-		};
-		gpu_g1_p0 {
-			/* vptid 2, max size 16384KB, priority 0, pbha 6 */
-			id_size_priority = <0x2 0xffffffff 0x0 0x6>;
+			id_size_priority = <0x28 0xffffffff 0x0 0x5>;
 		};
 		CAMERA1WAY0 {
 			/* vptid 3, size 512KB, priority 0 (highest), pbha 0 */
@@ -1086,7 +1046,146 @@
 		};
 	};
 
-	gs_memlat_devfreq {
+	gs_governor_dsulat: gs-governor-dsulat {
+		compatible = "google,gs_governor_dsulat";
+
+		primary_vote_config {
+			vote_name = "dsulat";
+			pm_qos_class = <PM_QOS_DSU_THROUGHPUT>;
+		};
+
+		/* governor configuration fields are defined in A0/B0 dtsi files */
+	};
+
+	gs_governor_memlat: gs-governor-memlat {
+		compatible = "google,gs_governor_memlat";
+
+		primary_vote_config {
+			vote_name = "memlat";
+			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
+		};
+
+		/* governor configuration fields are defined in A0/B0 dtsi files */
+	};
+
+	gs_perf_mon {
+		compatible = "google,gs_perf_mon";
+		param_ticks_per_counter_update = <2>;
+		client_update_backup_us = <10000>;
+		client_update_interval_us = <8000>;
+		gs_perf_cpu {
+			cpu0 {
+				cpu_idx = <0>;
+				pmu_events {
+					l2-cachemiss-ev = <0x17>;
+					l3-cachemiss-ev = <0xA2>;
+				};
+				amu_events {
+					inst-ev = <0x0008>;
+					cyc-ev = <0x0011>;
+					stall-backend-mem-ev = <0x4005>;
+				};
+			};
+			cpu1 {
+				cpu_idx = <1>;
+				pmu_events {
+					l2-cachemiss-ev = <0x17>;
+					l3-cachemiss-ev = <0xA2>;
+				};
+				amu_events {
+					inst-ev = <0x0008>;
+					cyc-ev = <0x0011>;
+					stall-backend-mem-ev = <0x4005>;
+				};
+			};
+			cpu2 {
+				cpu_idx = <2>;
+				pmu_events {
+					l2-cachemiss-ev = <0x17>;
+					l3-cachemiss-ev = <0xA2>;
+				};
+				amu_events {
+					inst-ev = <0x0008>;
+					cyc-ev = <0x0011>;
+					stall-backend-mem-ev = <0x4005>;
+				};
+			};
+			cpu3 {
+				cpu_idx = <3>;
+				pmu_events {
+					l2-cachemiss-ev = <0x17>;
+					l3-cachemiss-ev = <0xA2>;
+				};
+				amu_events {
+					inst-ev = <0x0008>;
+					cyc-ev = <0x0011>;
+					stall-backend-mem-ev = <0x4005>;
+				};
+			};
+			cpu4 {
+				cpu_idx = <4>;
+				pmu_events {
+					l2-cachemiss-ev = <0x17>;
+					l3-cachemiss-ev = <0x2A>;
+				};
+				amu_events {
+					inst-ev = <0x0008>;
+					cyc-ev = <0x0011>;
+					stall-backend-mem-ev = <0x4005>;
+				};
+			};
+			cpu5 {
+				cpu_idx = <5>;
+				pmu_events {
+					l2-cachemiss-ev = <0x17>;
+					l3-cachemiss-ev = <0x2A>;
+				};
+				amu_events {
+					inst-ev = <0x0008>;
+					cyc-ev = <0x0011>;
+					stall-backend-mem-ev = <0x4005>;
+				};
+			};
+			cpu6 {
+				cpu_idx = <6>;
+				pmu_events {
+					l2-cachemiss-ev = <0x17>;
+					l3-cachemiss-ev = <0x2A>;
+				};
+				amu_events {
+					inst-ev = <0x0008>;
+					cyc-ev = <0x0011>;
+					stall-backend-mem-ev = <0x4005>;
+				};
+			};
+			cpu7 {
+				cpu_idx = <7>;
+				pmu_events {
+					l2-cachemiss-ev = <0x17>;
+					l3-cachemiss-ev = <0x2A>;
+				};
+				amu_events {
+					inst-ev = <0x0008>;
+					cyc-ev = <0x0011>;
+					stall-backend-mem-ev = <0x4005>;
+				};
+			};
+			cpu8 {
+				cpu_idx = <8>;
+				pmu_events {
+					l2-cachemiss-ev = <0x17>;
+					l3-cachemiss-ev = <0x2A>;
+					stall-backend-mem-ev = <0x4005>;
+				};
+				amu_events {
+					inst-ev = <0x0008>;
+					cyc-ev = <0x0011>;
+				};
+			};
+		};
+	};
+
+	memlat_devfreq {
 		compatible = "memlat-devfreq-root";
 		#address-cells = <2>;
 		#size-cells = <1>;
@@ -1237,7 +1336,7 @@
 		};
 	};
 
-	gs_dsulat_devfreq {
+	dsulat_devfreq {
 		compatible = "dsulat-devfreq-root";
 		#address-cells = <2>;
 		#size-cells = <1>;

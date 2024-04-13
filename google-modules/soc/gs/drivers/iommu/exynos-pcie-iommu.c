@@ -99,9 +99,9 @@ static void __sysmmu_tlb_invalidate_all(void __iomem *sfrbase, int pcie_vid)
 }
 
 static void __sysmmu_set_ptbase(void __iomem *sfrbase,
-				phys_addr_t pfn_pgtable, int pcie_vid)
+				phys_addr_t pgtable, int pcie_vid)
 {
-	writel_relaxed(pfn_pgtable, sfrbase + REG_PT_BASE_PPN_VID(pcie_vid));
+	writel_relaxed(pgtable >> PT_BASE_SHIFT, sfrbase + REG_PT_BASE_PPN_VID(pcie_vid));
 
 	__sysmmu_tlb_invalidate_all(sfrbase, pcie_vid);
 }
@@ -157,7 +157,7 @@ static void __sysmmu_enable_nocount(struct sysmmu_drvdata *drvdata, int pcie_vid
 	__sysmmu_init_config(drvdata, pcie_vid);
 
 	__sysmmu_set_ptbase(drvdata->sfrbase,
-			    drvdata->pgtable / PAGE_SIZE, pcie_vid);
+			    drvdata->pgtable, pcie_vid);
 
 	spin_lock(&drvdata->mmu_ctrl_lock);
 	if (!is_sysmmu_active(drvdata)) {
@@ -683,7 +683,7 @@ void print_pcie_sysmmu_tlb(int hsi_block_num)
 
 	pgtable = __raw_readl(g_sysmmu_drvdata[hsi_block_num]->sfrbase +
 				REG_PT_BASE_PPN_VID(pcie_vid));
-	pgtable <<= PAGE_SHIFT;
+	pgtable <<= PT_BASE_SHIFT;
 	pr_info("Page Table Base Address : 0x%pap\n", &pgtable);
 }
 EXPORT_SYMBOL(print_pcie_sysmmu_tlb);
@@ -700,7 +700,7 @@ static int show_fault_information(struct sysmmu_drvdata *drvdata, int flags,
 	int pmmu_id, stream_id;
 
 	pgtable = __raw_readl(drvdata->sfrbase + REG_PT_BASE_PPN_VID(pcie_vid));
-	pgtable <<= PAGE_SHIFT;
+	pgtable <<= PT_BASE_SHIFT;
 
 	info = __raw_readl(drvdata->sfrbase + REG_FAULT_INFO0_VID(pcie_vid));
 
@@ -739,7 +739,7 @@ static int show_fault_information(struct sysmmu_drvdata *drvdata, int flags,
 	if (fault_id == SYSMMU_FAULT_PTW_ACCESS)
 		pr_crit("System MMU has failed to access page table\n");
 
-	if (!pfn_valid(pgtable >> PAGE_SHIFT)) {
+	if (!pfn_valid(PFN_DOWN(pgtable))) {
 		pr_crit("Page table base is not in a valid memory region\n");
 	} else {
 		sysmmu_pte_t *ent;
@@ -1240,7 +1240,7 @@ static inline int check_memory_validation(phys_addr_t paddr)
 {
 	int ret;
 
-	ret = pfn_valid(paddr >> PAGE_SHIFT);
+	ret = pfn_valid(PFN_DOWN(paddr));
 	if (!ret) {
 		pr_err("Requested address 0x%pap is NOT in DRAM region!!\n", &paddr);
 		return -EINVAL;
@@ -1659,6 +1659,8 @@ static struct exynos_iommu_domain *exynos_iommu_domain_alloc(struct device *dev)
 {
 	struct exynos_iommu_domain *domain;
 	int __maybe_unused i;
+        /* Mem to allocate (2 ^ (18 - PAGE_SHIFT)) * PAGE_SIZE = 256kb */
+	const int sz_256kb_order = 18 - PAGE_SHIFT;
 
 	domain = devm_kzalloc(dev, sizeof(*domain), GFP_KERNEL);
 	if (!domain)
@@ -1666,12 +1668,12 @@ static struct exynos_iommu_domain *exynos_iommu_domain_alloc(struct device *dev)
 
 	/* 36bit VA FLPD must be aligned in 256KB */
 	domain->pgtable =
-		(sysmmu_pte_t *)__get_free_pages(GFP_KERNEL | __GFP_ZERO, 6);
+		(sysmmu_pte_t *)__get_free_pages(GFP_KERNEL | __GFP_ZERO, sz_256kb_order);
 	if (!domain->pgtable)
 		goto err_pgtable;
 
 	domain->lv2entcnt = (atomic_t *)
-			__get_free_pages(GFP_KERNEL | __GFP_ZERO, 6);
+			__get_free_pages(GFP_KERNEL | __GFP_ZERO, sz_256kb_order);
 	if (!domain->lv2entcnt)
 		goto err_counter;
 
@@ -1709,11 +1711,11 @@ static struct exynos_iommu_domain *exynos_iommu_domain_alloc(struct device *dev)
 
 #ifdef USE_DYNAMIC_MEM_ALLOC
 err_ext_buff:
-	free_pages((unsigned long)domain->lv2entcnt, 6);
+	free_pages((unsigned long)domain->lv2entcnt, sz_256kb_order);
 #endif
 
 err_counter:
-	free_pages((unsigned long)domain->pgtable, 6);
+	free_pages((unsigned long)domain->pgtable, sz_256kb_order);
 err_pgtable:
 	kfree(domain);
 	return NULL;

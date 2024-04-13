@@ -661,6 +661,26 @@ static void __mfc_core_nal_q_set_enc_config_qp(struct mfc_ctx *ctx,
 	}
 }
 
+static void __mfc_core_nal_q_set_enc_ts_delta(struct mfc_ctx *ctx, EncoderInputStr *pInStr)
+{
+	struct mfc_enc *enc = ctx->enc_priv;
+	struct mfc_enc_params *p = &enc->params;
+	int ts_delta;
+
+	ts_delta = mfc_enc_get_ts_delta(ctx);
+
+	pInStr->TimeStampDelta &= ~(0xFFFF);
+	pInStr->TimeStampDelta |= (ts_delta & 0xFFFF);
+
+	if (ctx->ts_last_interval)
+		mfc_debug(3, "[NALQ][DFR] fps %d -> %ld, delta: %d, reg: %#x\n",
+				p->rc_framerate, USEC_PER_SEC / ctx->ts_last_interval,
+				ts_delta, pInStr->TimeStampDelta);
+	else
+		mfc_debug(3, "[NALQ][DFR] fps %d -> 0, delta: %d, reg: %#x\n",
+				p->rc_framerate, ts_delta, pInStr->TimeStampDelta);
+}
+
 static void __mfc_core_nal_q_get_dec_metadata_sei_nal(struct mfc_core *core, struct mfc_ctx *ctx,
 					DecoderOutputStr *pOutStr, unsigned int index)
 {
@@ -1244,6 +1264,7 @@ static int __mfc_core_nal_q_run_in_buf_enc(struct mfc_core *core, struct mfc_cor
 		__mfc_core_nal_q_set_min_bit_count(ctx, pInStr);
 	__mfc_core_nal_q_set_slice_mode(ctx, pInStr);
 	__mfc_core_nal_q_set_enc_config_qp(ctx, pInStr);
+	__mfc_core_nal_q_set_enc_ts_delta(ctx, pInStr);
 
 	if (core->last_mfc_freq)
 		timeout_value = (core->last_mfc_freq * MFC_TIMEOUT_VALUE_IN_MSEC);
@@ -1725,7 +1746,8 @@ static void __mfc_core_nal_q_handle_frame_unused_output(struct mfc_ctx *ctx,
 				UNUSED_TAG);
 
 		dec->ref_buf[dec->refcnt].fd[0] = mfc_buf->vb.vb2_buf.planes[0].m.fd;
-		dec->refcnt++;
+		if (dec->refcnt < MFC_MAX_BUFFERS - 1)
+			dec->refcnt++;
 
 		vb2_buffer_done(&mfc_buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 		mfc_debug(2, "[NALQ][DPB] dst index [%d][%d] fd: %d is buffer done (not used)\n",
@@ -2186,7 +2208,8 @@ static void __mfc_core_nal_q_handle_released_buf(struct mfc_core *core, struct m
 			dec->dpb[i].ref = 0;
 			if (dec->dpb[i].queued && (dec->dpb[i].new_fd != -1)) {
 				dec->ref_buf[dec->refcnt].fd[0] = dec->dpb[i].fd[0];
-				dec->refcnt++;
+				if (dec->refcnt < MFC_MAX_BUFFERS - 1)
+					dec->refcnt++;
 				mfc_debug(3, "[NALQ][REFINFO] Queued DPB[%d] released fd: %d\n",
 						i, dec->dpb[i].fd[0]);
 				dec->dpb[i].fd[0] = dec->dpb[i].new_fd;
@@ -2195,7 +2218,8 @@ static void __mfc_core_nal_q_handle_released_buf(struct mfc_core *core, struct m
 						i, dec->dpb[i].fd[0]);
 			} else if (!dec->dpb[i].queued) {
 				dec->ref_buf[dec->refcnt].fd[0] = dec->dpb[i].fd[0];
-				dec->refcnt++;
+				if (dec->refcnt < MFC_MAX_BUFFERS - 1)
+					dec->refcnt++;
 				mfc_debug(3, "[NALQ][REFINFO] Dqueued DPB[%d] released fd: %d\n",
 						i, dec->dpb[i].fd[0]);
 				/*
@@ -2221,7 +2245,8 @@ static void __mfc_core_nal_q_handle_released_buf(struct mfc_core *core, struct m
 		if (!(dec->dynamic_used & (1UL << i)) && dec->dpb[i].mapcnt
 				&& !dec->dpb[i].queued) {
 			dec->ref_buf[dec->refcnt].fd[0] = dec->dpb[i].fd[0];
-			dec->refcnt++;
+			if (dec->refcnt < MFC_MAX_BUFFERS - 1)
+				dec->refcnt++;
 			mfc_debug(3, "[NALQ][REFINFO] display DPB[%d] released fd: %d\n",
 					i, dec->dpb[i].fd[0]);
 			dec->dpb_table_used &= ~(1UL << i);
