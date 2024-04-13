@@ -459,6 +459,9 @@ void gbms_logbuffer_prlog(struct logbuffer *log, int level, int debug_no_logbuff
 	gbms_logbuffer_prlog(log, level, debug_no_logbuffer, debug_printk_prlog, \
 	"%s %s: " fmt, dev_driver_string(dev), dev_name(dev), ##__VA_ARGS__); \
 }
+void gbms_logbuffer_devlog(struct logbuffer *log, struct device *dev, int level,
+			   int debug_no_logbuffer, int debug_printk_prlog,
+			   const char *f, ...);
 
 /* debug/print */
 const char *gbms_chg_type_s(int chg_type);
@@ -615,11 +618,11 @@ enum gbms_charger_modes {
 enum bhi_algo {
 	BHI_ALGO_DISABLED = 0,
 
-	BHI_ALGO_CYCLE_COUNT	= 1, /* bare, just use cycle count */
-	BHI_ALGO_ACHI		= 2, /* cap avg from history, no resistance */
-	BHI_ALGO_ACHI_B		= 3, /* same as ACHI + bounds check */
-	BHI_ALGO_ACHI_RAVG	= 4, /* same as ACHI and google_resistance */
-	BHI_ALGO_ACHI_RAVG_B	= 5, /* same as ACHI_RAVG + bounds check */
+	BHI_ALGO_CYCLE_COUNT	=  1, /* bare, just use cycle count */
+	BHI_ALGO_ACHI		=  2, /* average of FCN from history */
+	BHI_ALGO_ACHI_B		=  3, /* same as ACHI + bounds check */
+	BHI_ALGO_ACHI_RECAL	=  4, /* same as ACHI_B + recalibration */
+	BHI_ALGO_ACHI_RAVG_B	=  5, /* same as ACHI_RAVG + bounds check */
 
 	/* TODO:
 	 * BHI_ALGO_ACHI_QRES	 = 4,  cap avg from history, qual resistance
@@ -628,10 +631,11 @@ enum bhi_algo {
 	 * BHI_ALGO_GCAP_RAVG_B	= 41,  same as GCAP_RAVG + bounds check
 	 */
 
-	BHI_ALGO_MIX_N_MATCH 	= 6,
-	BHI_ALGO_DEBUG		= 7,
-	BHI_ALGO_INDI		= 8, /* individual conditions check */
-	BHI_ALGO_DTOOL		= 9,
+	BHI_ALGO_MIX_N_MATCH 	=  6, /* mix weight of cycle, impedance, swelling */
+	BHI_ALGO_DEBUG		=  7, /* debug/test */
+	BHI_ALGO_INDI		=  8, /* age criteria for Battery Service Test API b/253642456 */
+	BHI_ALGO_DTOOL		=  9, /* diagnostics for Cavalry b/304878620 */
+	BHI_ALGO_ACHI_FCR	= 10, /* average of FCR from history b/310501655*/
 	BHI_ALGO_MAX,
 };
 

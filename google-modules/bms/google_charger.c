@@ -354,6 +354,9 @@ struct chg_drv {
 	/* charging policy */
 	struct gvotable_election *charging_policy_votable;
 	int charging_policy;
+
+	int online;
+	int present;
 };
 
 static void reschedule_chg_work(struct chg_drv *chg_drv)
@@ -2428,8 +2431,22 @@ static void chg_work(struct work_struct *work)
 	}
 
 	/* ICL=0 on discharge will (might) cause usb online to go to 0 */
-	present =  usb_present || wlc_present || ext_present;
+	present = usb_present || wlc_present || ext_present;
 	online = usb_online || wlc_online || ext_online;
+
+	/* Logging */
+	if (chg_drv->online != online || chg_drv->present != present) {
+		struct bd_data *bd_state = &chg_drv->bd_state;
+
+		gbms_logbuffer_devlog(bd_state->bd_log, chg_drv->device,
+				      LOGLEVEL_INFO, 0, LOGLEVEL_INFO,
+				      "online:%d->%d [%d/%d/%d], present:%d->%d [%d/%d/%d] (%d)",
+				      chg_drv->online, online, usb_online, wlc_online,  ext_online,
+				      chg_drv->present, present, usb_present, wlc_present,
+				      ext_present, chg_drv->stop_charging);
+		chg_drv->online = online;
+		chg_drv->present = present;
+	}
 
 	if (usb_online  < 0 || wlc_online < 0 || ext_online < 0) {
 		pr_err("MSC_CHG error reading usb=%d wlc=%d ext=%d\n",
@@ -4607,6 +4624,11 @@ static void chg_init_votables(struct chg_drv *chg_drv)
 	gvotable_cast_int_vote(chg_drv->msc_fcc_votable, MAX_VOTER,
 			       chg_drv->batt_profile_fcc_ua,
 			       chg_drv->batt_profile_fcc_ua > 0);
+
+	/* update temp dry run votable if bd_temp_dry_run is set from DT */
+	if (chg_drv->msc_temp_dry_run_votable && chg_drv->bd_state.bd_temp_dry_run)
+		gvotable_cast_bool_vote(chg_drv->msc_temp_dry_run_votable, MSC_CHG_VOTER,
+					chg_drv->bd_state.bd_temp_dry_run);
 }
 
 static int fan_get_level(struct chg_thermal_device *tdev)

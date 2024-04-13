@@ -27,7 +27,10 @@ GBMS_MODULES =	GOOGLE_BMS \
 		MAX77779_PMIC_IRQ \
 		MAX77779_PMIC_PINCTRL \
 		MAX77779_PMIC_SGPIO \
-		LN8411
+		STWLC98 \
+		STWC68 \
+		LN8411 \
+		FG_MAX77779
 
 obj-$(CONFIG_GOOGLE_BMS)	+= google-bms.o
 google-bms-objs += google_bms.o
@@ -114,7 +117,12 @@ max77779-objs += max77779_charger.o
 obj-$(CONFIG_MAX1720X_BATTERY)  += max1720x-battery.o
 max1720x-battery-objs += max1720x_battery.o
 max1720x-battery-objs += max1720x_outliers.o
+max1720x-battery-objs += maxfg_logging.o
 max1720x-battery-objs += max_m5.o
+
+obj-$(CONFIG_FG_MAX77779)  += max77779-fg.o
+max77779-fg-objs += max77779_fg.o
+max77779-fg-objs += max77779_fg_model.o
 
 # OVP
 obj-$(CONFIG_MAX20339)	+= max20339.o
@@ -143,6 +151,7 @@ WENUMS=-Wno-enum-conversion -Wno-switch
 CFLAGS_max77759_charger.o += -Wno-unused-function $(WENUMS)
 CFLAGS_max77779_charger.o += -Wno-unused-function $(WENUMS)
 CFLAGS_max77729_charger.o += -Wno-unused-function $(WENUMS)
+CFLAGS_max77779_fg.o += -Wno-unused-function $(WENUMS)
 CFLAGS_max1720x_battery.o += $(WENUMS)
 CFLAGS_pca9468_charger.o += $(WENUMS)
 CFLAGS_pca9468_gbms_pps.o += $(WENUMS)
