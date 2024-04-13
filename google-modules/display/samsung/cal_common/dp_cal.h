@@ -298,6 +298,12 @@ struct dp_hw_config {
 
 	/* USBDP combo phy enable ref count */
 	atomic_t usbdp_phy_en_cnt;
+
+	/* DP PHY boost */
+	bool phy_boost;
+
+	/* DP Emulation Mode */
+	bool dp_emul;
 };
 
 
@@ -311,8 +317,8 @@ int dp_hw_read_dpcd_burst(u32 address, u32 length, u8 *data);
 int dp_hw_read_edid(u8 block_cnt, u32 length, u8 *data);
 
 /* DP Hardware Control Interfaces */
-void dp_hw_init(struct dp_hw_config *hw_config);
-void dp_hw_reinit(struct dp_hw_config *hw_config);
+int dp_hw_init(struct dp_hw_config *hw_config);
+int dp_hw_reinit(struct dp_hw_config *hw_config);
 void dp_hw_deinit(struct dp_hw_config *hw_config);
 void dp_hw_start(void);
 void dp_hw_stop(void);

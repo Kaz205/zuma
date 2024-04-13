@@ -33,6 +33,8 @@
 #define MAX_REGULATORS		3
 #define MAX_HDR_FORMATS		4
 #define MAX_BL_RANGES		10
+#define MAX_VREFRESH_RANGES	10
+#define MAX_RESOLUTION_TABLES	2
 
 #define MAX_TE2_TYPE			20
 #define FIXED_TE2_VREFRESH_NORMAL	120
@@ -635,10 +637,16 @@ struct exynos_panel_desc {
 	u32 bl_num_ranges;
 	const struct exynos_panel_mode *modes;
 	size_t num_modes;
+	const struct display_resolution *resolution_table;
+	size_t resolution_table_count;
+	const int *vrefresh_range;
+	size_t vrefresh_range_count;
 	const struct exynos_dsi_cmd_set *off_cmd_set;
 	/* @lp_mode: provides a low power mode if available, otherwise null */
 	const struct exynos_panel_mode *lp_mode;
 	const size_t lp_mode_count;
+	const int *lp_vrefresh_range;
+	size_t lp_vrefresh_range_count;
 	const struct exynos_dsi_cmd_set *lp_cmd_set;
 	const struct exynos_binned_lp *binned_lp;
 	const size_t num_binned_lp;
@@ -651,6 +659,8 @@ struct exynos_panel_desc {
 	const struct panel_reg_ctrl reg_ctrl_disable[PANEL_REG_COUNT];
 	const u32 normal_mode_work_delay_ms;
 	const u32 default_dsi_hs_clk;
+	/* Set true if need to keep ATC on while switching op_hz if it's already on */
+	const bool keep_atc_on_for_op;
 };
 
 #define PANEL_ID_MAX		40
@@ -698,6 +708,45 @@ struct te2_mode_data {
 struct te2_data {
 	struct te2_mode_data mode_data[MAX_TE2_TYPE];
 	enum exynos_panel_te2_opt option;
+};
+
+enum display_state {
+	DISPLAY_STATE_ON,
+	DISPLAY_STATE_HBM,
+	DISPLAY_STATE_LP,
+	DISPLAY_STATE_OFF,
+	DISPLAY_STATE_MAX
+};
+
+struct display_resolution {
+	u16 hdisplay;
+	u16 vdisplay;
+};
+
+struct display_time_state {
+	size_t available_count;
+	u64 *time;
+};
+
+struct display_stats {
+	int vrefresh_range[MAX_VREFRESH_RANGES];
+	size_t vrefresh_range_count;
+	int lp_vrefresh_range[MAX_VREFRESH_RANGES];
+	size_t lp_vrefresh_range_count;
+	struct display_resolution res_table[MAX_RESOLUTION_TABLES];
+	unsigned int res_table_count;
+	struct display_time_state time_in_state[DISPLAY_STATE_MAX];
+	enum display_state last_state;
+	int last_time_state_idx;
+	ktime_t last_update;
+	struct mutex lock;
+	bool initialized;
+};
+
+struct notify_state_change {
+	struct work_struct work;
+	struct wakeup_source *ws;
+	bool abort_suspend;
 };
 
 struct exynos_panel {
@@ -799,9 +848,13 @@ struct exynos_panel {
 	ktime_t last_panel_idle_set_ts;
 	struct delayed_work idle_work;
 
-	/* works of sysfs_notify */
-	struct work_struct state_notify;
-	struct work_struct brightness_notify;
+	/* use for notify state changed */
+	bool allow_wakeup_by_state_change;
+	struct notify_state_change notify_panel_mode_changed;
+	struct work_struct notify_brightness_changed_work;
+
+	/* use for display stats residence */
+	struct display_stats disp_stats;
 
 	/**
 	 * Record the last refresh rate switch. Note the mode switch doesn't
@@ -958,6 +1011,12 @@ static inline ssize_t exynos_get_te2_type_len(struct exynos_panel *ctx, bool lp_
 {
 	return (lp_mode ? (ctx->desc->lp_mode_count ? : 1) * (ctx->desc->num_binned_lp - 1) :
 		ctx->desc->num_modes);
+}
+
+static inline void notify_panel_mode_changed(struct exynos_panel *ctx, bool abort_suspend)
+{
+	ctx->notify_panel_mode_changed.abort_suspend = abort_suspend;
+	schedule_work(&ctx->notify_panel_mode_changed.work);
 }
 
 static inline u32 get_current_frame_duration_us(struct exynos_panel *ctx)

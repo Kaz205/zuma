@@ -1530,7 +1530,7 @@ int dp_hw_read_edid(u8 block_cnt, u32 length, u8 *data)
 }
 
 /* DP Hardware Control Interfaces */
-void dp_hw_init(struct dp_hw_config *hw_config)
+int dp_hw_init(struct dp_hw_config *hw_config)
 {
 	cal_log_info(0, "DP Link Version = 0x%X\n", dp_reg_get_version());
 
@@ -1583,9 +1583,11 @@ void dp_hw_init(struct dp_hw_config *hw_config)
 	/* Set Interrupts */
 	dp_hw_set_common_interrupt(1);
 	cal_log_debug(0, "set interrupts\n");
+
+	return 0;
 }
 
-void dp_hw_reinit(struct dp_hw_config *hw_config)
+int dp_hw_reinit(struct dp_hw_config *hw_config)
 {
 	/* Set system clock to OSC */
 	dp_reg_set_txclk_osc();
@@ -1619,6 +1621,8 @@ void dp_hw_reinit(struct dp_hw_config *hw_config)
 	dp_reg_set_enhanced_mode(hw_config->enhanced_mode ? 1 : 0);
 	dp_reg_set_sst1_video_func_en(1);
 	cal_log_debug(0, "set sst function\n");
+
+	return 0;
 }
 
 void dp_hw_deinit(struct dp_hw_config *hw_config)

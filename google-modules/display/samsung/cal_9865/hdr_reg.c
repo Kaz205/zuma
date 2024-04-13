@@ -289,7 +289,7 @@ void hdr_reg_print_gm(u32 id, struct drm_printer *p)
 			ELEM_SIZE_32, p);
 
 	cal_drm_printf(p, id, "OFFSETS:\n");
-	hdr_reg_print(id, HDR_GM_COEFF(0), HDR_GM_OFFS_REG_CNT,
+	hdr_reg_print(id, HDR_GM_OFF(0), HDR_GM_OFFS_REG_CNT,
 			ELEM_SIZE_32, p);
 }
 

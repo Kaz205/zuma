@@ -386,6 +386,7 @@ struct exynos_drm_private {
 	struct device *iommu_client;
 	void *mapping;
 	bool tui_enabled;
+	struct mutex dp_tui_lock;
 	u32 secured_dpp_mask;
 
 	/* for atomic commit */
