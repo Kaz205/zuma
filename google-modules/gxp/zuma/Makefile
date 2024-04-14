@@ -55,24 +55,17 @@ EDGETPU_CHIP := rio
 
 endif
 
+ifdef CONFIG_MODULES
 ifeq ($(CONFIG_$(GXP_CHIP)),m)
 
 gxp-objs += $(GCIP_DIR)/gcip.o
 
 endif
+endif
 
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 include $(KERNEL_SRC)/../private/google-modules/soc/gs/Makefile.include
 M ?= $(shell pwd)
-
-# Obtain the current git commit hash for logging on probe
-GIT_PATH=$(shell cd $(KERNEL_SRC); readlink -e $(M))
-GIT_BIN=/usr/bin/git
-GIT=$(GIT_BIN) -C $(GIT_PATH)
-ifeq ($(shell $(GIT) rev-parse --is-inside-work-tree),true)
-        GIT_REPO_STATE=$(shell ($(GIT) --work-tree=$(GIT_PATH) status --porcelain | grep -q .) && echo -dirty)
-        ccflags-y       += -DGIT_REPO_TAG=\"$(shell $(GIT) rev-parse --short HEAD)$(GIT_REPO_STATE)\"
-endif
 
 # If building via make directly, specify target platform by adding
 #     "GXP_PLATFORM=<target>"
@@ -86,8 +79,8 @@ GXP_PLATFORM ?= SILICON
 
 gxp-flags := -DCONFIG_GXP_$(GXP_PLATFORM) -DCONFIG_$(GXP_CHIP)=1 \
 	     -I$(M)/include -I$(M)/gcip-kernel-driver/include \
-	     -I$(srctree)/$(M)/include \
-	     -I$(srctree)/$(M)/gcip-kernel-driver/include \
+	     -I$(srctree)/$(src)/include \
+	     -I$(srctree)/$(src)/gcip-kernel-driver/include \
 	     -I$(srctree)/drivers/gxp/include
 ccflags-y += $(EXTRA_CFLAGS) $(gxp-flags)
 

@@ -142,6 +142,7 @@
 int log_print_threshold = 0;
 #endif /* DHD_LOG_PRINT_RATE_LIMIT */
 
+#ifdef DHD_DEBUG
 /* dhd_msg_level : a default level to print to dmesg buffer
  * dhd_log_level : a default level to log to DLD or Ring
  * To keep one level operation(dhd_msg_level) in HW4,
@@ -184,6 +185,7 @@ int dhd_log_level = DHD_ERROR_VAL | DHD_FWLOG_VAL | DHD_EVENT_VAL
 	| DHD_PKT_MON_VAL;
 
 #endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
+#endif /* DHD_DEBUG */
 
 #ifdef NDIS
 extern uint wl_msg_level;
@@ -3606,8 +3608,10 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 		if (!(int_val & DHD_WL_VAL2))
 #endif /* WL_CFG80211 */
 		{
+#ifdef DHD_DEBUG
 			dhd_msg_level = int_val;
 			dhd_log_level = int_val;
+#endif /* DHD_DEBUG */
 		}
 		break;
 #ifdef DHD_LOGLEVEL
@@ -7158,7 +7162,7 @@ wl_process_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata, uint pktlen
 				event->ifname));
 		}
 #endif /* PCIE_FULL_DONGLE */
-		/* falls through */
+		fallthrough;
 	case WLC_E_DEAUTH:
 	case WLC_E_DEAUTH_IND:
 	case WLC_E_DISASSOC:
@@ -7205,7 +7209,7 @@ wl_process_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata, uint pktlen
 			ifp->post_roam_evt = FALSE;
 		}
 #endif /* DHD_POST_EAPOL_M1_AFTER_ROAM_EVT */
-		/* fall through */
+		fallthrough;
 	default:
 		*ifidx = dhd_ifname2idx(dhd_pub->info, event->ifname);
 		/* push up to external supp/auth */

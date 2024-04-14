@@ -29,63 +29,51 @@
 #define GOOG_LOGW(gti, fmt, args...) GOOG_WARN(gti, "%s: "fmt, __func__, ##args)
 #define GOOG_LOGE(gti, fmt, args...) GOOG_ERR(gti, "%s: "fmt, __func__, ##args)
 #define MAX_SLOTS 10
-/*
- * GTI_DEBUG_HEALTHCHECK_KFIFO_LEN
- * Define the array length of struct gti_debug_healthcheck to track recent
- * touch interrupts information for debug.
- */
-#define GTI_DEBUG_HEALTHCHECK_KFIFO_LEN 32	/* must be power of 2. */
-#define GTI_DEBUG_HEALTHCHECK_LOGS_LEN 4
-/*
- * GTI_DEBUG_INPUT_KFIFO_LEN
- * Define the array length of struct gti_debug_input to track recent
- * touch input report for debug.
- */
-#define GTI_DEBUG_INPUT_KFIFO_LEN 16	/* must be power of 2. */
-#define GTI_DEBUG_INPUT_LOGS_LEN 4
 
 /*-----------------------------------------------------------------------------
  * Interactive calibration minimum and maximum state times.
  */
 
+#define NSEC_PER_SEC_ULL	1000000000ULL
+
 /* Must wait at least 5s before beginning any operation */
-#define MIN_DELAY_IDLE		(5 * 1e9)
+#define MIN_DELAY_IDLE		(5 * NSEC_PER_SEC_ULL)
 
 /* Must wait at least 1s between screen-turning-off and calibration start, and
  * cannot stay in this state longer than 15s.
  */
-#define MIN_DELAY_INIT_CAL	(1 * 1e9)
-#define MAX_DELAY_INIT_CAL	(15 * 1e9)
+#define MIN_DELAY_INIT_CAL	(1 * NSEC_PER_SEC_ULL)
+#define MAX_DELAY_INIT_CAL	(15 * NSEC_PER_SEC_ULL)
 
 /* Must wait at least 3s for calibration to complete and cannot stay in this
  * state longer than 15s.
  */
-#define MIN_DELAY_RUN_CAL	(3 * 1e9)
-#define MAX_DELAY_RUN_CAL	(15 * 1e9)
+#define MIN_DELAY_RUN_CAL	(3 * NSEC_PER_SEC_ULL)
+#define MAX_DELAY_RUN_CAL	(15 * NSEC_PER_SEC_ULL)
 
 /* Must wait at least 1s before final return to idle and cannot stay in this
  * state longer than 15s.
  */
-#define MIN_DELAY_END_CAL	(1 * 1e9)
-#define MAX_DELAY_END_CAL	(15 * 1e9)
+#define MIN_DELAY_END_CAL	(1 * NSEC_PER_SEC_ULL)
+#define MAX_DELAY_END_CAL	(15 * NSEC_PER_SEC_ULL)
 
 /* Must wait at least 1s between screen-turning-off and self-test start, and
  * cannot state in this state longer than 15s.
  */
-#define MIN_DELAY_INIT_TEST	(1 * 1e9)
-#define MAX_DELAY_INIT_TEST	(15 * 1e9)
+#define MIN_DELAY_INIT_TEST	(1 * NSEC_PER_SEC_ULL)
+#define MAX_DELAY_INIT_TEST	(15 * NSEC_PER_SEC_ULL)
 
 /* Must wait at least 3s for self-test to complete and cannot stay in this state
  * longer than 15s.
  */
-#define MIN_DELAY_RUN_TEST	(3 * 1e9)
-#define MAX_DELAY_RUN_TEST	(15 * 1e9)
+#define MIN_DELAY_RUN_TEST	(3 * NSEC_PER_SEC_ULL)
+#define MAX_DELAY_RUN_TEST	(15 * NSEC_PER_SEC_ULL)
 
 /* Must wait at least 1s before final return to idle and cannot stay in this
  * state longer than 15s.
  */
-#define MIN_DELAY_END_TEST	(1 * 1e9)
-#define MAX_DELAY_END_TEST	(15 * 1e9)
+#define MIN_DELAY_END_TEST	(1 * NSEC_PER_SEC_ULL)
+#define MAX_DELAY_END_TEST	(15 * NSEC_PER_SEC_ULL)
 
 /*-----------------------------------------------------------------------------
  * enums.
@@ -823,16 +811,20 @@ struct goog_touch_interface {
 	int (*vendor_default_handler)(void *private_data,
 		enum gti_cmd_type cmd_type, struct gti_union_cmd_data *cmd);
 
+#ifdef GTI_DEBUG_INPUT_KFIFO_LEN
 	/* Debug used. */
 	u64 released_index;
 	int debug_warning_limit;
 	struct gti_debug_input debug_input[MAX_SLOTS];
 	struct gti_debug_input debug_input_history[GTI_DEBUG_INPUT_KFIFO_LEN];
 	DECLARE_KFIFO(debug_fifo_input, struct gti_debug_input, GTI_DEBUG_INPUT_KFIFO_LEN);
+#endif
+#ifdef GTI_DEBUG_HEALTHCHECK_KFIFO_LEN
 	struct gti_debug_healthcheck debug_healthcheck;
 	struct gti_debug_healthcheck debug_healthcheck_history[GTI_DEBUG_HEALTHCHECK_KFIFO_LEN];
 	DECLARE_KFIFO(debug_fifo_healthcheck, struct gti_debug_healthcheck,
 		GTI_DEBUG_HEALTHCHECK_KFIFO_LEN);
+#endif
 };
 
 /*-----------------------------------------------------------------------------
@@ -895,8 +887,18 @@ int goog_pm_unregister_notification(struct goog_touch_interface *gti);
 
 void goog_notify_fw_status_changed(struct goog_touch_interface *gti,
 		enum gti_fw_status status, struct gti_fw_status_data* data);
+#ifdef GTI_DEBUG_HEALTHCHECK_KFIFO_LEN
 void gti_debug_healthcheck_dump(struct goog_touch_interface *gti);
+#else
+static inline
+void gti_debug_healthcheck_dump(struct goog_touch_interface *gti) { }
+#endif
+#ifdef GTI_DEBUG_INPUT_KFIFO_LEN
 void gti_debug_input_dump(struct goog_touch_interface *gti);
+#else
+static inline
+void gti_debug_input_dump(struct goog_touch_interface *gti) { }
+#endif
 
 int goog_get_lptw_triggered(struct goog_touch_interface *gti);
 

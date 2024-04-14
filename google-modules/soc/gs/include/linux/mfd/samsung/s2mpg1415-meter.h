@@ -31,7 +31,7 @@ typedef enum {
 	ADDRESS_COUNT,
 } address_t;
 
-const int ADDRESS_AT[ADDRESS_COUNT][ID_COUNT] = {
+static const int ADDRESS_AT[ADDRESS_COUNT][ID_COUNT] = {
 	[ADDRESS_CTRL1] = { S2MPG14_METER_CTRL1, S2MPG15_METER_CTRL1 },
 	[ADDRESS_CTRL2] = { S2MPG14_METER_CTRL2, S2MPG15_METER_CTRL2 },
 	[ADDRESS_CTRL5] = { S2MPG14_METER_CTRL5, S2MPG15_METER_CTRL5 },
@@ -53,14 +53,14 @@ const int ADDRESS_AT[ADDRESS_COUNT][ID_COUNT] = {
 	},
 };
 
-const u32 s2mpg1415_int_sample_rate_uhz[S2MPG1415_INT_FREQ_COUNT] = {
+static const u32 s2mpg1415_int_sample_rate_uhz[S2MPG1415_INT_FREQ_COUNT] = {
 	[INT_7P_8125HZ] = 7812500, [INT_15P_625HZ] = 15625000,
 	[INT_31P_25HZ] = 31250000, [INT_62P_5HZ] = 62500000,
 	[INT_125HZ] = 125000000,   [INT_250HZ] = 250000000,
 	[INT_1000HZ] = 1000000000,
 };
 
-const u32 s2mpg1415_ext_sample_rate_uhz[S2MPG1415_EXT_FREQ_COUNT] = {
+static const u32 s2mpg1415_ext_sample_rate_uhz[S2MPG1415_EXT_FREQ_COUNT] = {
 	[EXT_7P_8125HZ] = 7812500, [EXT_15P_625HZ] = 15625000,
 	[EXT_31P_25HZ] = 31250000, [EXT_62P_5HZ] = 62500000,
 	[EXT_125HZ] = 125000000,
@@ -150,7 +150,7 @@ static inline ssize_t s2mpg1415_meter_format_channel(char *buf, ssize_t count,
 	u64 resolution_max = _IQ30_to_int((u64)resolution * one_billion);
 
 	return scnprintf(buf + count, PAGE_SIZE - count,
-			 "CH%d[%s]: 0x%016x * %d.%09lu / 0x%08x %s\n", ch, name,
+			 "CH%d[%s]: 0x%016llx * %lld.%09llu / 0x%08x %s\n", ch, name,
 			 acc_data, resolution_max / one_billion,
 			 resolution_max % one_billion, acc_count, units);
 }

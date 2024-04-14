@@ -5691,8 +5691,6 @@ static void batt_cycle_count_update(struct batt_drv *batt_drv, int soc)
 
 /* ------------------------------------------------------------------------- */
 
-#ifdef CONFIG_DEBUG_FS
-
 static ssize_t cycle_counts_store(struct device *dev,
 				  struct device_attribute *attr,
 				  const char *buf, size_t count)
@@ -6237,8 +6235,6 @@ static int debug_ravg_fops_write(void *data, u64 val)
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(debug_ravg_fops, NULL, debug_ravg_fops_write, "%llu\n");
-
-#endif
 
 /* ------------------------------------------------------------------------- */
 
@@ -9001,7 +8997,7 @@ static bool gbatt_check_critical_level(const struct batt_drv *batt_drv,
 		if (vbatt == -EAGAIN)
 			return false;
 
-		return (vbatt < 0) ? : vbatt < batt_drv->batt_critical_voltage;
+		return vbatt < 0 || vbatt < batt_drv->batt_critical_voltage;
 	}
 
 	/* here soc == 0, shutdown if not connected or if state is not charging  */

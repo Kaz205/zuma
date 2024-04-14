@@ -92,7 +92,7 @@ static int brl_dev_confirm(struct goodix_ts_core *cd)
 		ret = hw_ops->read(cd, BOOTOPTION_ADDR, rx_buf, sizeof(rx_buf));
 		if (ret < 0)
 			return ret;
-		ts_info("device confirm val: %*ph.", sizeof(rx_buf), rx_buf); /* [GOOG] */
+		ts_info("device confirm val: %*ph.", (int)sizeof(rx_buf), rx_buf); /* [GOOG] */
 		if (!memcmp(tx_buf, rx_buf, sizeof(tx_buf)))
 			break;
 		usleep_range(5000, 5100);
@@ -1178,7 +1178,8 @@ static int goodix_touch_handler(struct goodix_ts_core *cd,
 		}
 	}
 
-	goodix_update_heatmap(cd, (u8 *)event_data); /* [GOOG] */
+	if (IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP))
+		goodix_update_heatmap(cd, (u8 *)event_data); /* [GOOG] */
 
 	ts_event->fp_flag = event_data->fp_flag;
 	ts_event->event_type |= EVENT_TOUCH;
@@ -1986,6 +1987,7 @@ static int brl_flash_read(struct goodix_ts_core *cd, u32 addr, u8 *buf, int len)
 	ret = 0;
 read_end:
 	goodix_flash_cmd(cd, 0x0C, 0, 0);
+	kfree(tmp_buf);
 	return ret;
 }
 

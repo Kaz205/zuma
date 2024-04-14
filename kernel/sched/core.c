@@ -61,21 +61,6 @@ EXPORT_SYMBOL_GPL(runqueues);
 
 #ifdef CONFIG_SCHED_DEBUG
 /*
- * Debugging: various feature bits
- *
- * If SCHED_DEBUG is disabled, each compilation unit has its own copy of
- * sysctl_sched_features, defined in sched.h, to allow constants propagation
- * at compile time and compiler optimization based on features default.
- */
-#define SCHED_FEAT(name, enabled)	\
-	(1UL << __SCHED_FEAT_##name) * enabled |
-const_debug unsigned int sysctl_sched_features =
-#include "features.h"
-	0;
-EXPORT_SYMBOL_GPL(sysctl_sched_features);
-#undef SCHED_FEAT
-
-/*
  * Print a warning if need_resched is set for the given duration (if
  * LATENCY_WARN is enabled).
  *
@@ -3756,6 +3741,7 @@ static int ttwu_runnable(struct task_struct *p, int wake_flags)
 }
 
 #ifdef CONFIG_SMP
+#if SCHED_FEAT_TTWU_QUEUE
 void sched_ttwu_pending(void *arg)
 {
 	struct llist_node *llist = arg;
@@ -3788,6 +3774,7 @@ void sched_ttwu_pending(void *arg)
 
 	rq_unlock_irqrestore(rq, &rf);
 }
+#endif
 
 void send_call_function_single_ipi(int cpu)
 {
@@ -3799,6 +3786,7 @@ void send_call_function_single_ipi(int cpu)
 		trace_sched_wake_idle_without_ipi(cpu);
 }
 
+#if SCHED_FEAT_TTWU_QUEUE
 /*
  * Queue a task on the target CPUs wake_list and wake the CPU via IPI if
  * necessary. The wakee CPU on receipt of the IPI will queue the task
@@ -3814,6 +3802,7 @@ static void __ttwu_queue_wakelist(struct task_struct *p, int cpu, int wake_flags
 	WRITE_ONCE(rq->ttwu_pending, 1);
 	__smp_call_single_queue(cpu, &p->wake_entry.llist);
 }
+#endif
 
 void wake_up_if_idle(int cpu)
 {
@@ -3848,6 +3837,7 @@ bool cpus_share_cache(int this_cpu, int that_cpu)
 	return per_cpu(sd_llc_id, this_cpu) == per_cpu(sd_llc_id, that_cpu);
 }
 
+#if SCHED_FEAT_TTWU_QUEUE
 static inline bool ttwu_queue_cond(struct task_struct *p, int cpu)
 {
 	/*
@@ -3902,6 +3892,7 @@ static bool ttwu_queue_wakelist(struct task_struct *p, int cpu, int wake_flags)
 
 	return false;
 }
+#endif
 
 #else /* !CONFIG_SMP */
 
@@ -3917,8 +3908,10 @@ static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
 	struct rq *rq = cpu_rq(cpu);
 	struct rq_flags rf;
 
+#if SCHED_FEAT_TTWU_QUEUE
 	if (ttwu_queue_wakelist(p, cpu, wake_flags))
 		return;
+#endif
 
 	rq_lock(rq, &rf);
 	update_rq_clock(rq);
@@ -4172,38 +4165,40 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	 * A similar smb_rmb() lives in try_invoke_on_locked_down_task().
 	 */
 	smp_rmb();
-	if (READ_ONCE(p->on_rq) && ttwu_runnable(p, wake_flags))
-		goto unlock;
-
-	if (READ_ONCE(p->__state) & TASK_UNINTERRUPTIBLE)
-		trace_sched_blocked_reason(p);
+	if (READ_ONCE(p->on_rq)) {
+		if (ttwu_runnable(p, wake_flags))
+			goto unlock;
+	} else {
+#ifdef CONFIG_SMP
+		/*
+		 * Ensure we load p->on_cpu _after_ p->on_rq, otherwise it would
+		 * be possible to, falsely, observe p->on_cpu == 0.
+		 *
+		 * One must be running (->on_cpu == 1) in order to remove
+		 * oneself from the runqueue.
+		 *
+		 * __schedule() (switch to task 'p')	try_to_wake_up()
+		 *   STORE p->on_cpu = 1		  LOAD p->on_rq
+		 *   UNLOCK rq->lock
+		 *
+		 * __schedule() (put 'p' to sleep)
+		 *   LOCK rq->lock			  smp_rmb();
+		 *   smp_mb__after_spinlock();
+		 *   STORE p->on_rq = 0			  LOAD p->on_cpu
+		 *
+		 * Pairs with the LOCK+smp_mb__after_spinlock() on rq->lock in
+		 * __schedule().  See the comment for smp_mb__after_spinlock().
+		 *
+		 * Form a control-dep-acquire with p->on_rq == 0 above, to
+		 * ensure schedule()'s deactivate_task() has 'happened' and p
+		 * will no longer care about it's own p->state. See the comment
+		 * in __schedule().
+		 */
+		smp_acquire__after_ctrl_dep();
+#endif
+	}
 
 #ifdef CONFIG_SMP
-	/*
-	 * Ensure we load p->on_cpu _after_ p->on_rq, otherwise it would be
-	 * possible to, falsely, observe p->on_cpu == 0.
-	 *
-	 * One must be running (->on_cpu == 1) in order to remove oneself
-	 * from the runqueue.
-	 *
-	 * __schedule() (switch to task 'p')	try_to_wake_up()
-	 *   STORE p->on_cpu = 1		  LOAD p->on_rq
-	 *   UNLOCK rq->lock
-	 *
-	 * __schedule() (put 'p' to sleep)
-	 *   LOCK rq->lock			  smp_rmb();
-	 *   smp_mb__after_spinlock();
-	 *   STORE p->on_rq = 0			  LOAD p->on_cpu
-	 *
-	 * Pairs with the LOCK+smp_mb__after_spinlock() on rq->lock in
-	 * __schedule().  See the comment for smp_mb__after_spinlock().
-	 *
-	 * Form a control-dep-acquire with p->on_rq == 0 above, to ensure
-	 * schedule()'s deactivate_task() has 'happened' and p will no longer
-	 * care about it's own p->state. See the comment in __schedule().
-	 */
-	smp_acquire__after_ctrl_dep();
-
 	/*
 	 * We're doing the wakeup (@success == 1), they did a dequeue (p->on_rq
 	 * == 0), which means we need to do an enqueue, change p->state to
@@ -4212,6 +4207,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	 */
 	WRITE_ONCE(p->__state, TASK_WAKING);
 
+#if SCHED_FEAT_TTWU_QUEUE
 	/*
 	 * If the owning (remote) CPU is still in the middle of schedule() with
 	 * this task as prev, considering queueing p on the remote CPUs wake_list
@@ -4234,6 +4230,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	if (smp_load_acquire(&p->on_cpu) &&
 	    ttwu_queue_wakelist(p, task_cpu(p), wake_flags))
 		goto unlock;
+#endif
 
 	/*
 	 * If the owning (remote) CPU is still in the middle of schedule() with
@@ -5713,12 +5710,7 @@ static noinline void __schedule_bug(struct task_struct *prev)
 		pr_err("Preemption disabled at:");
 		print_ip_sym(KERN_ERR, preempt_disable_ip);
 	}
-	check_panic_on_warn("scheduling while atomic");
-
-	trace_android_rvh_schedule_bug(prev);
-
-	dump_stack();
-	add_taint(TAINT_WARN, LOCKDEP_STILL_OK);
+	panic("scheduling while atomic\n");
 }
 
 /*
@@ -7249,8 +7241,10 @@ int idle_cpu(int cpu)
 		return 0;
 
 #ifdef CONFIG_SMP
+#if SCHED_FEAT_TTWU_QUEUE
 	if (rq->ttwu_pending)
 		return 0;
+#endif
 #endif
 
 	return 1;
@@ -9571,11 +9565,11 @@ void __init sched_init(void)
 	int i;
 
 	/* Make sure the linker didn't screw up */
-	BUG_ON(&idle_sched_class + 1 != &fair_sched_class ||
-	       &fair_sched_class + 1 != &rt_sched_class ||
-	       &rt_sched_class + 1   != &dl_sched_class);
+	BUG_ON(&idle_sched_class > &fair_sched_class ||
+	       &fair_sched_class > &rt_sched_class ||
+	       &rt_sched_class   > &dl_sched_class);
 #ifdef CONFIG_SMP
-	BUG_ON(&dl_sched_class + 1 != &stop_sched_class);
+	BUG_ON(&dl_sched_class > &stop_sched_class);
 #endif
 
 	wait_bit_init();
@@ -9823,6 +9817,7 @@ void ___might_sleep(const char *file, int line, int preempt_offset)
 
 	trace_android_rvh_schedule_bug(NULL);
 
+	panic("%s: Panicking due to potential bug", __func__);
 	dump_stack();
 	add_taint(TAINT_WARN, LOCKDEP_STILL_OK);
 }
@@ -9851,6 +9846,7 @@ void __cant_sleep(const char *file, int line, int preempt_offset)
 			current->pid, current->comm);
 
 	debug_show_held_locks(current);
+	panic("%s: Panicking due to potential bug", __func__);
 	dump_stack();
 	add_taint(TAINT_WARN, LOCKDEP_STILL_OK);
 }

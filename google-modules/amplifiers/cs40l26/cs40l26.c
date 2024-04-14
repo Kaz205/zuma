@@ -386,28 +386,18 @@ int cs40l26_pm_stdby_timeout_ms_get(struct cs40l26_private *cs40l26,
 }
 EXPORT_SYMBOL(cs40l26_pm_stdby_timeout_ms_get);
 
-static void cs40l26_pm_runtime_setup(struct cs40l26_private *cs40l26)
+static inline void cs40l26_pm_runtime_setup(struct cs40l26_private *cs40l26)
 {
-	struct device *dev = cs40l26->dev;
-
-	pm_runtime_mark_last_busy(dev);
-	pm_runtime_set_active(dev);
-	pm_runtime_enable(dev);
-	pm_runtime_set_autosuspend_delay(dev, CS40L26_AUTOSUSPEND_DELAY_MS);
-	pm_runtime_use_autosuspend(dev);
-
-	cs40l26->pm_ready = true;
+	pm_runtime_mark_last_busy(cs40l26->dev);
+	pm_runtime_use_autosuspend(cs40l26->dev);
+	pm_runtime_set_autosuspend_delay(cs40l26->dev, CS40L26_AUTOSUSPEND_DELAY_MS);
+	pm_runtime_enable(cs40l26->dev);
 }
 
-static void cs40l26_pm_runtime_teardown(struct cs40l26_private *cs40l26)
+static inline void cs40l26_pm_runtime_teardown(struct cs40l26_private *cs40l26)
 {
-	struct device *dev = cs40l26->dev;
-
-	pm_runtime_set_suspended(dev);
-	pm_runtime_disable(dev);
-	pm_runtime_dont_use_autosuspend(dev);
-
-	cs40l26->pm_ready = false;
+	pm_runtime_disable(cs40l26->dev);
+	pm_runtime_dont_use_autosuspend(cs40l26->dev);
 }
 
 static int cs40l26_check_pm_lock(struct cs40l26_private *cs40l26, bool *locked)
@@ -723,7 +713,7 @@ static int cs40l26_handle_mbox_buffer(struct cs40l26_private *cs40l26)
 {
 	struct device *dev = cs40l26->dev;
 	u32 val = 0;
-	int ret;
+	int __maybe_unused ret;
 
 	while (!cs40l26_mbox_buffer_read(cs40l26, &val)) {
 		if ((val & CS40L26_DSP_MBOX_CMD_INDEX_MASK)
@@ -4287,7 +4277,7 @@ static char **cs40l26_get_tuning_names(struct cs40l26_private *cs40l26,
 	return coeff_files;
 
 err_free:
-	for (; i >= 0; i--)
+	while (i--)
 		kfree(coeff_files[i]);
 	kfree(coeff_files);
 	*actual_num_files = 0;
@@ -4324,6 +4314,8 @@ static int cs40l26_coeff_load(struct cs40l26_private *cs40l26, u32 tuning)
 		release_firmware(coeff);
 	}
 
+	for (i = 0; i < CS40L26_MAX_TUNING_FILES; i++)
+		kfree(coeff_files[i]);
 	kfree(coeff_files);
 
 	return 0;
@@ -4448,14 +4440,14 @@ static int cs40l26_fw_upload(struct cs40l26_private *cs40l26)
 	else
 		ret = request_firmware(&fw, CS40L26_FW_FILE_NAME, dev);
 
+	if (ret)
+		return ret;
+
+	ret = cs40l26_dsp_pre_config(cs40l26);
 	if (ret) {
 		release_firmware(fw);
 		return ret;
 	}
-
-	ret = cs40l26_dsp_pre_config(cs40l26);
-	if (ret)
-		return ret;
 
 	ret = cl_dsp_firmware_parse(cs40l26->dsp, fw, true);
 	release_firmware(fw);
@@ -5187,8 +5179,6 @@ int cs40l26_probe(struct cs40l26_private *cs40l26,
 		goto err;
 	}
 
-	cs40l26->pm_ready = false;
-
 	init_completion(&cs40l26->i2s_cont);
 	init_completion(&cs40l26->erase_cont);
 	init_completion(&cs40l26->cal_f0_cont);
@@ -5241,8 +5231,7 @@ int cs40l26_remove(struct cs40l26_private *cs40l26)
 	mutex_destroy(&cs40l26->lock);
 
 
-	if (cs40l26->pm_ready)
-		cs40l26_pm_runtime_teardown(cs40l26);
+	cs40l26_pm_runtime_teardown(cs40l26);
 
 	if (cs40l26->vibe_workqueue) {
 		cancel_work_sync(&cs40l26->vibe_start_work);
@@ -5311,11 +5300,6 @@ int cs40l26_suspend(struct device *dev)
 {
 	struct cs40l26_private *cs40l26 = dev_get_drvdata(dev);
 
-	if (!cs40l26->pm_ready) {
-		dev_dbg(dev, "Suspend call ignored\n");
-		return 0;
-	}
-
 	dev_dbg(cs40l26->dev, "%s: Enabling hibernation\n", __func__);
 
 	return cs40l26_pm_state_transition(cs40l26,
@@ -5364,11 +5348,6 @@ int cs40l26_resume(struct device *dev)
 #if IS_ENABLED(CONFIG_GOOG_CUST)
 	int error;
 #endif
-
-	if (!cs40l26->pm_ready) {
-		dev_dbg(dev, "Resume call ignored\n");
-		return 0;
-	}
 
 	dev_dbg(cs40l26->dev, "%s: Disabling hibernation\n", __func__);
 

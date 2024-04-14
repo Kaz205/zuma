@@ -793,7 +793,7 @@ static void max77759_init_regs(struct regmap *regmap, struct logbuffer *log)
 
 static int post_process_pd_message(struct max77759_plat *chip, struct pd_message msg)
 {
-	enum pd_ctrl_msg_type pd_type = pd_header_type_le(msg.header);
+	enum pd_data_msg_type pd_type = pd_header_type_le(msg.header);
 
 	if (pd_type == PD_DATA_VENDOR_DEF) {
 		u32 payload[2];
@@ -1984,19 +1984,6 @@ static irqreturn_t max77759_irq(int irq, void *dev_id)
 	return irq_return;
 }
 
-static irqreturn_t max77759_isr(int irq, void *dev_id)
-{
-	struct max77759_plat *chip = dev_id;
-
-	LOG(LOG_LVL_DEBUG, chip->log, "TCPC_ALERT triggered ");
-	pm_wakeup_event(chip->dev, PD_ACTIVITY_TIMEOUT_MS);
-
-	if (!chip->tcpci)
-		return IRQ_HANDLED;
-
-	return IRQ_WAKE_THREAD;
-}
-
 static void max77759_io_error_work(struct kthread_work *work)
 {
 	struct max77759_plat *chip =
@@ -2019,7 +2006,7 @@ static int max77759_init_alert(struct max77759_plat *chip,
 	if (!client->irq)
 		return -ENODEV;
 
-	ret = devm_request_threaded_irq(chip->dev, client->irq, max77759_isr,
+	ret = devm_request_threaded_irq(chip->dev, client->irq, NULL,
 					max77759_irq,
 					(IRQF_TRIGGER_LOW | IRQF_ONESHOT),
 					dev_name(chip->dev), chip);
@@ -3079,8 +3066,7 @@ static int max77759_probe(struct i2c_client *client,
 
 	chip->charger_mode_votable = gvotable_election_get_handle(GBMS_MODE_VOTABLE);
 	if (IS_ERR_OR_NULL(chip->charger_mode_votable)) {
-		dev_err(&client->dev, "TCPCI: GBMS_MODE_VOTABLE get failed",
-			PTR_ERR(chip->charger_mode_votable));
+		dev_err(&client->dev, "TCPCI: GBMS_MODE_VOTABLE get failed");
 		if (!of_property_read_bool(dn, "gvotable-lazy-probe"))
 			return -EPROBE_DEFER;
 	}
@@ -3183,7 +3169,7 @@ static int max77759_probe(struct i2c_client *client,
 	chip->compliance_warnings = init_compliance_warnings(chip);
 	if (IS_ERR_OR_NULL(chip->compliance_warnings)) {
 		ret = PTR_ERR(chip->compliance_warnings);
-		dev_err(&client->dev, "init_compliance_warnings failed, ptr: %ld", ret);
+		dev_err(&client->dev, "init_compliance_warnings failed, ptr: %d", ret);
 		return ret;
 	}
 
@@ -3522,7 +3508,7 @@ static int __init max77759_i2c_driver_init(void)
 {
 	tcpm_log = logbuffer_register("tcpm");
 	if (IS_ERR_OR_NULL(tcpm_log))
-		return -EAGAIN;
+		pr_err("%s: logbuffer get failed, not fatal", __func__);
 
 	return i2c_add_driver(&max77759_i2c_driver);
 }

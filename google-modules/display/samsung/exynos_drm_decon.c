@@ -95,6 +95,8 @@ static inline unsigned long fps_timeout(int fps)
 
 	return msecs_to_jiffies(frame_time_ms) + FRAME_TIMEOUT;
 }
+
+#ifdef CONFIG_DEBUG_FS
 void decon_dump(struct decon_device *decon, struct drm_printer *p)
 {
 	unsigned long flags;
@@ -145,6 +147,7 @@ void decon_dump_locked(const struct decon_device *decon, struct drm_printer *p)
 	if (decon->cgc_dma)
 		cgc_dump(pointer, decon->cgc_dma);
 }
+#endif
 
 static inline u32 win_start_pos(int x, int y)
 {
@@ -825,7 +828,7 @@ static void decon_wait_earliest_process_time(
 			pr_warn("expected present time seems incorrect(now %llu, earliest %llu)\n",
 					now, earliest_process_time);
 		}
-		usleep_range(delay_until_process, delay_until_process + 10);
+		usleep_idle_range(delay_until_process, delay_until_process + 10);
 
 		DPU_ATRACE_END("wait for earliest process time");
 	}
@@ -1519,7 +1522,7 @@ static void decon_wait_for_flip_done(struct exynos_drm_crtc *crtc,
 	if (old_crtc_state->active)
 		fps = min(fps, drm_mode_vrefresh(&old_crtc_state->mode));
 
-	if (!wait_for_completion_timeout(&commit->flip_done, fps_timeout(fps))) {
+	if (!wait_for_common(&commit->flip_done, fps_timeout(fps), TASK_IDLE)) {
 		unsigned long flags;
 		bool fs_irq_pending;
 
@@ -1658,7 +1661,7 @@ static int decon_bind(struct device *dev, struct device *master, void *data)
 
 	iommu_register_device_fault_handler(dev, dpu_sysmmu_fault_handler, decon);
 
-#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON) && defined(CONFIG_DEBUG_FS)
 	decon->itmon_nb.notifier_call = dpu_itmon_notifier;
 	itmon_notifier_chain_register(&decon->itmon_nb);
 #endif
