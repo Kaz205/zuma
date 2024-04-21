@@ -755,12 +755,14 @@ static u32 mif_cpu_vote(struct pmu_stat *stat, int cpu, u32 cur, u32 *dsu_vote)
 		/*
 		 * The CPU is at its maximum frequency and isn't influenced by
 		 * changes in MIF frequency, likely because the CPU's frequency
-		 * cannot go any higher. Use the highest MIF frequency scaled by
-		 * CPU capacity.
+		 * cannot go any higher. Use the highest MIF frequency except for
+		 * the LITTLE cluster, since it doesn't need to run that high.
 		 */
-		unsigned int capacity = arch_scale_cpu_capacity(cpu);
-		unsigned long target_freq = mif->tbl[0] * capacity / SCHED_CAPACITY_SCALE;
-		vote = find_index_l(mif, target_freq);
+		if (cpu == 0 || cpu == 1 || cpu == 2 || cpu == 3)
+			/* Run at 1352MHz as defined in zuma.dtsi */
+			vote = 7;
+		else
+			vote = 0;
 	}
 #undef est_cpu_khz
 
