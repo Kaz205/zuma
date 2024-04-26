@@ -10,10 +10,13 @@
  */
 #define SCHED_FEAT_PLACE_DEADLINE_INITIAL 1
 /*
- * Inhibit (wakeup) preemption until the current task has either matched the
- * 0-lag point or until is has exhausted it's slice.
+ * Inhibit (wakeup) preemption until the current task has exhausted its slice.
  */
-#define SCHED_FEAT_RUN_TO_PARITY 1
+#define SCHED_FEAT_RESPECT_SLICE 1
+/*
+ * Relax RESPECT_SLICE to allow preemption once current has reached 0-lag.
+ */
+#define SCHED_FEAT_RUN_TO_PARITY 0
 /*
  * Allow tasks with a shorter slice to disregard RUN_TO_PARITY
  */

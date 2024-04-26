@@ -821,7 +821,7 @@ static inline bool pick_curr(struct cfs_rq *cfs_rq,
 	/*
 	 * Nothing to preserve...
 	 */
-	if (!curr || !sched_feat(RUN_TO_PARITY))
+	if (!curr || !sched_feat(RESPECT_SLICE))
 		return false;
 
 	/*
@@ -829,7 +829,7 @@ static inline bool pick_curr(struct cfs_rq *cfs_rq,
 	 * is consumed. Note: placement of positive lag can push V left and render
 	 * @curr instantly ineligible irrespective the time on-cpu.
 	 */
-	if (!entity_eligible(cfs_rq, curr))
+	if (sched_feat(RUN_TO_PARITY) && !entity_eligible(cfs_rq, curr))
 		return false;
 
 	/*
