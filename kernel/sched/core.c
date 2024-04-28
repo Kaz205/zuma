@@ -2060,13 +2060,9 @@ EXPORT_SYMBOL_GPL(activate_task);
 
 void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 {
-	bool sleep = flags & DEQUEUE_SLEEP;
+	p->on_rq = (flags & DEQUEUE_SLEEP) ? 0 : TASK_ON_RQ_MIGRATING;
 
-	if (dequeue_task(rq, p, flags)) {
-		p->on_rq = (flags & DEQUEUE_SLEEP) ? 0 : TASK_ON_RQ_MIGRATING;
-	} else {
-		SCHED_WARN_ON(!sleep); /* only sleep can fail */
-	}
+	dequeue_task(rq, p, flags);
 }
 EXPORT_SYMBOL_GPL(deactivate_task);
 
@@ -3741,17 +3737,12 @@ static int ttwu_runnable(struct task_struct *p, int wake_flags)
 
 	rq = __task_rq_lock(p, &rf);
 	if (task_on_rq_queued(p)) {
-		update_rq_clock(rq);
-		if (p->se.sched_delayed) {
-			/* mustn't run a delayed task */
-			SCHED_WARN_ON(task_running(rq, p));
-			enqueue_task(rq, p, ENQUEUE_DELAYED);
-		}
 		if (!task_running(rq, p)) {
 			/*
 			 * When on_rq && !on_cpu the task is preempted, see if
 			 * it should preempt the task that is current now.
 			 */
+			update_rq_clock(rq);
 			check_preempt_curr(rq, p, wake_flags);
 		}
 		WRITE_ONCE(p->__state, TASK_RUNNING);
@@ -4125,16 +4116,11 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 		 * case the whole 'p->on_rq && ttwu_runnable()' case below
 		 * without taking any locks.
 		 *
-		 * Specifically, given current runs ttwu() we must be before
-		 * schedule()'s deactivate_task(), as such this must not
-		 * observe sched_delayed.
-		 *
 		 * In particular:
 		 *  - we rely on Program-Order guarantees for all the ordering,
 		 *  - we're serialized against set_special_state() by virtue of
 		 *    it disabling IRQs (this allows not taking ->pi_lock).
 		 */
-		SCHED_WARN_ON(p->se.sched_delayed);
 		if (!ttwu_state_match(p, state, &success))
 			goto out;
 
