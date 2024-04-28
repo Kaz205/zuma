@@ -12254,16 +12254,14 @@ void unregister_fair_sched_group(struct task_group *tg)
 		struct cfs_rq *cfs_rq = tg->cfs_rq[cpu];
 		struct sched_entity *se = tg->se[cpu];
 		struct rq *rq = cpu_rq(cpu);
-		struct rq_flags rf;
 
 		if (se) {
 			if (se->sched_delayed) {
-				rq_lock_irqsave(rq, &rf);
+				guard(rq_lock_irqsave)(rq);
 				update_rq_clock(rq);
 				if (se->sched_delayed)
 					dequeue_entities(rq, se, DEQUEUE_SLEEP | DEQUEUE_DELAYED);
 				list_del_leaf_cfs_rq(cfs_rq);
-				rq_unlock_irqrestore(rq, &rf);
 			}
 			remove_entity_load_avg(se);
 		}
@@ -12273,9 +12271,8 @@ void unregister_fair_sched_group(struct task_group *tg)
 		 * check on_list without danger of it being re-added.
 		 */
 		if (cfs_rq->on_list) {
-			rq_lock_irqsave(rq, &rf);
+			guard(rq_lock_irqsave)(rq);
 			list_del_leaf_cfs_rq(cfs_rq);
-			rq_unlock_irqrestore(rq, &rf);
 		}
 	}
 }
