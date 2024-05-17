@@ -190,6 +190,10 @@ static unsigned long dp_bist_mode = DP_BIST_OFF;
 module_param(dp_bist_mode, ulong, 0664);
 MODULE_PARM_DESC(dp_bist_mode, "use BIST mode by setting dp_bist_mode=x");
 
+static bool dp_edid_hexdump = false;
+module_param(dp_edid_hexdump, bool, 0664);
+MODULE_PARM_DESC(dp_edid_hexdump, "Enable/disable DP EDID hexdump");
+
 static int dp_emulation_mode;
 
 static void dp_fill_host_caps(struct dp_device *dp)
@@ -360,6 +364,8 @@ static ssize_t dp_aux_transfer(struct drm_dp_aux *dp_aux,
 static int dp_get_edid_block(void *data, u8 *edid, unsigned int block,
 			     size_t length)
 {
+	struct dp_device *dp = data;
+
 	// Hard-coded EDID for DP emulation mode
 	static const unsigned char emul_edid_block0[] = {
 		0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x1e, 0x6d, 0x01, 0x00, 0x01,
@@ -388,6 +394,11 @@ static int dp_get_edid_block(void *data, u8 *edid, unsigned int block,
 
 	if (!dp_emulation_mode) {
 		dp_hw_read_edid(block, length, edid);
+		if (dp_edid_hexdump) {
+			dp_info(dp, "EDID: block %u length %zu\n", block, length);
+			print_hex_dump(KERN_INFO, "exynos-drmdp: ", DUMP_PREFIX_NONE,
+					16, 1, edid, length, true);
+		}
 		return 0;
 	}
 
@@ -399,7 +410,7 @@ static int dp_get_edid_block(void *data, u8 *edid, unsigned int block,
 		return 0;
 	}
 
-	dp_warn(dp_drvdata, "%s: unknown edid block %d requested\n", __func__, block);
+	dp_warn(dp, "%s: unknown EDID block %d requested\n", __func__, block);
 	return -1;
 }
 

@@ -661,6 +661,9 @@ struct exynos_panel_desc {
 	const u32 default_dsi_hs_clk;
 	/* Set true if need to keep ATC on while switching op_hz if it's already on */
 	const bool keep_atc_on_for_op;
+	/* list of revision of this panel */
+	const size_t num_module_ids;
+	const struct panel_module_id_info *module_ids;
 };
 
 #define PANEL_ID_MAX		40
@@ -747,6 +750,11 @@ struct notify_state_change {
 	struct work_struct work;
 	struct wakeup_source *ws;
 	bool abort_suspend;
+};
+
+struct panel_module_id_info {
+	u32 module_id;
+	u32 revision;
 };
 
 struct exynos_panel {
@@ -1183,6 +1191,7 @@ int exynos_panel_prepare(struct drm_panel *panel);
 int exynos_panel_read_id(struct exynos_panel *ctx);
 int exynos_panel_read_ddic_id(struct exynos_panel *ctx);
 void exynos_panel_get_panel_rev(struct exynos_panel *ctx, u8 rev);
+void exynos_panel_get_revision_by_module_ids(struct exynos_panel *ctx, u32 module_id);
 void exynos_panel_model_init(struct exynos_panel *ctx, const char* project, u8 extra_info);
 int exynos_panel_init(struct exynos_panel *ctx);
 void exynos_panel_reset(struct exynos_panel *ctx);

@@ -2285,11 +2285,9 @@ int dp_hw_read_edid(u8 block_cnt, u32 length, u8 *data)
 		dp_reg_set_aux_reply_timeout_and_retries();
 		dp_reg_set_aux_ch_address_only_command(false);
 
-		/* for 3,4 block */
 		if (block_cnt > 1) {
-			u8 segment = 1;
+			u8 segment = block_cnt / 2;
 
-			cal_log_warn(0, "read block%d\n", block_cnt);
 			dp_reg_set_aux_ch_command(I2C_WRITE);
 			dp_reg_set_aux_ch_address(DDC_SEGMENT_ADDR);
 			dp_reg_set_aux_ch_length(1);

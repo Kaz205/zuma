@@ -420,6 +420,30 @@ void exynos_panel_get_panel_rev(struct exynos_panel *ctx, u8 rev)
 }
 EXPORT_SYMBOL(exynos_panel_get_panel_rev);
 
+void exynos_panel_get_revision_by_module_ids(struct exynos_panel *ctx, u32 module_id)
+{
+	int i;
+	u32 rev;
+
+	if (!ctx->desc || !ctx->desc->module_ids) {
+		dev_err(ctx->dev, "panel revision array is not defined!\n");
+		return;
+	}
+
+	for (i = 0; i < ctx->desc->num_module_ids; i++) {
+		if (ctx->desc->module_ids[i].module_id == module_id) {
+			rev = ctx->desc->module_ids[i].revision;
+			dev_info(ctx->dev, "module id: 0x%x, revision: 0x%x\n", module_id, rev);
+			ctx->panel_rev = rev;
+			return;
+		}
+	}
+
+	dev_warn(ctx->dev, "Unknown rev from panel (0x%x), default to latest\n", module_id);
+	ctx->panel_rev = PANEL_REV_LATEST;
+}
+EXPORT_SYMBOL_GPL(exynos_panel_get_revision_by_module_ids);
+
 void exynos_panel_model_init(struct exynos_panel *ctx, const char* project, u8 extra_info)
 {
 
