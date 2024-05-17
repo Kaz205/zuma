@@ -766,12 +766,10 @@ int lwis_trigger_event_add_weak_transaction(struct lwis_client *client, int64_t 
 	weak_transaction->is_weak_transaction = true;
 	weak_transaction->id = transaction_id;
 	if (precondition_fence_fd >= 0) {
-		weak_transaction->precondition_fence_fp = fget(precondition_fence_fd);
+		weak_transaction->precondition_fence_fp =
+			lwis_fence_get(client, precondition_fence_fd);
 		if (weak_transaction->precondition_fence_fp == NULL) {
-			dev_err(client->lwis_dev->dev,
-				"Precondition fence %d results in NULL file pointer",
-				precondition_fence_fd);
-			return -EINVAL;
+			return -EBADF;
 		}
 	} else {
 		weak_transaction->precondition_fence_fp = NULL;

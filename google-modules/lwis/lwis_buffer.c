@@ -71,13 +71,16 @@ static void dump_total_enrolled_buffer_size(struct lwis_device *lwis_dev)
 			continue;
 		}
 		hash_for_each (client->enrolled_buffers, i, enrollment_list, node) {
+			spin_lock_irqsave(&client->buffer_lock, flags);
 			buffer = list_first_entry(&enrollment_list->list,
 						  struct lwis_enrolled_buffer, list_node);
 			total_enrolled_size += buffer->dma_buf->size;
 			num_enrolled_buffers++;
+			spin_unlock_irqrestore(&client->buffer_lock, flags);
 		}
 	}
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
+
 	if (total_enrolled_size > 0) {
 		pr_info("%-16s: %16d %16lu kB\n", lwis_dev->name, num_enrolled_buffers,
 			total_enrolled_size / 1024);

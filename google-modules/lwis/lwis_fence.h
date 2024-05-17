@@ -18,9 +18,14 @@
 
 #define LWIS_CLIENTS_HASH_BITS 8
 
+/* Randomly generated number used to identify lwis_fence objects */
+#define LWIS_FENCE_IDENTIFIER 0x75A2C6BC
+
 extern bool lwis_fence_debug;
 
 struct lwis_fence {
+	/* Used to identify the structure when casting from void pointer */
+	int struct_id;
 	int fd;
 	int status;
 	spinlock_t lock;
@@ -53,9 +58,9 @@ int lwis_fence_create(struct lwis_device *lwis_dev);
 int ioctl_lwis_fence_create(struct lwis_device *lwis_dev, int32_t __user *msg);
 
 /*
- *  lwis_fence_get: Get the lwis_fence associated with the fd.
+ *  lwis_fence_get: Get the file pointer for the lwis_fence associated with the fd.
  */
-struct lwis_device *lwis_fence_get(int fd);
+struct file *lwis_fence_get(struct lwis_client *client, int fd);
 
 /* Creates all fences that do not currently exist */
 int lwis_initialize_transaction_fences(struct lwis_client *client,
