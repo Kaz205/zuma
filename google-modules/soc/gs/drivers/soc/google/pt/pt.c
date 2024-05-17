@@ -265,7 +265,7 @@ static int __noreturn pt_resize_thread(void *data)
 					pt_internal_data.resize_wq,
 					!list_empty(&pt_internal_data.resize_list) ||
 						kthread_should_stop());
-			} while (!ret);
+			} while (ret);
 		}
 	}
 

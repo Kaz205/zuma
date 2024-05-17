@@ -36,6 +36,8 @@ extern unsigned int vendor_sched_util_post_init_scale;
 extern bool vendor_sched_npi_packing;
 extern bool vendor_sched_boost_adpf_prio;
 
+extern struct cpumask cpu_skip_mask;
+
 static unsigned int early_boot_boost_uclamp_min = 563;
 module_param(early_boot_boost_uclamp_min, uint, 0644);
 
@@ -1296,7 +1298,7 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd, unsig
 	unsigned long sum_util, energy = 0;
 	struct task_struct *tsk;
 	int cpu;
-	bool count_idle = false;
+	bool count_idle;
 
 	for (; pd; pd = pd->next) {
 		struct cpumask *pd_mask = perf_domain_span(pd);
@@ -1344,8 +1346,7 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd, unsig
 			max_util = max(max_util, cpu_util);
 		}
 
-		if (cpumask_test_cpu(dst_cpu, pd_mask) && exit_lat > C1_EXIT_LATENCY)
-			count_idle = true;
+		count_idle = cpumask_test_cpu(dst_cpu, pd_mask) && exit_lat > C1_EXIT_LATENCY;
 
 		energy += em_cpu_energy_pixel_mod(pd->em_pd, max_util, sum_util, count_idle,
 						  dst_cpu);
@@ -1848,7 +1849,9 @@ int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu,
 		preferred_idle_mask = get_preferred_idle_mask(p);
 		cpumask_or(&idle_unpreferred, &idle_fit, &idle_unfit);
 		cpumask_andnot(&idle_unpreferred, &idle_unpreferred, preferred_idle_mask);
-		cpumask_and(&idle_fit, &idle_fit, preferred_idle_mask);
+		// If there is no fit idle CPU in preferred_idle_mask, ignore it
+		if (task_fits_capacity(p, cpumask_last(preferred_idle_mask)))
+			cpumask_and(&idle_fit, &idle_fit, preferred_idle_mask);
 		cpumask_and(&idle_unfit, &idle_unfit, preferred_idle_mask);
 	}
 
@@ -2404,7 +2407,8 @@ void rvh_select_task_rq_fair_pixel_mod(void *data, struct task_struct *p, int pr
 	set_prefer_high_cap(p, sync && cpu >= pixel_cluster_start_cpu[1]);
 
 	if (sync && cpu_rq(cpu)->nr_running == 1 && cpumask_test_cpu(cpu, p->cpus_ptr) &&
-	     cpu_is_in_target_set(p, cpu) && task_fits_capacity(p, cpu)) {
+	     cpu_is_in_target_set(p, cpu) && task_fits_capacity(p, cpu) &&
+	     !cpumask_test_cpu(cpu, &cpu_skip_mask)) {
 		*target_cpu = cpu;
 		sync_wakeup = true;
 		goto out;
@@ -2412,7 +2416,8 @@ void rvh_select_task_rq_fair_pixel_mod(void *data, struct task_struct *p, int pr
 
 	/* prefer prev cpu */
 	if (cpu_active(prev_cpu) && cpu_is_idle(prev_cpu) &&
-	    task_fits_capacity(p, prev_cpu) && check_preferred_idle_mask(p, prev_cpu)) {
+	    task_fits_capacity(p, prev_cpu) && check_preferred_idle_mask(p, prev_cpu) &&
+	    !cpumask_test_cpu(prev_cpu, &cpu_skip_mask)) {
 
 		struct cpuidle_state *idle_state;
 		unsigned int exit_lat = UINT_MAX;
@@ -2613,6 +2618,12 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 		return;
 
 	/*
+	 * Do not pull tasks in skip mask.
+	 */
+	if(cpumask_test_cpu(this_cpu, &cpu_skip_mask))
+		return;
+
+	/*
 	 * This is OK, because current is on_cpu, which avoids it being picked
 	 * for load-balance and preemption/IRQs are still disabled avoiding
 	 * further scheduler activity on it and we're being very careful to
@@ -2725,6 +2736,11 @@ void rvh_can_migrate_task_pixel_mod(void *data, struct task_struct *mp,
 
 	if (!get_prefer_idle(mp))
 		return;
+
+	if (cpumask_test_cpu(dst_cpu, &cpu_skip_mask)) {
+		*can_migrate = 0;
+		return;
+	}
 
 	if (atomic_read(&vrq->num_adpf_tasks))
 		*can_migrate = 0;

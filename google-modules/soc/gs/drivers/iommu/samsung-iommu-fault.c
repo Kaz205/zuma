@@ -354,7 +354,7 @@ static void sysmmu_show_secure_fault_information(struct sysmmu_drvdata *drvdata,
 	char err_msg[128];
 
 	pgtable = read_sec_info(MMU_SEC_REG(drvdata, IDX_SEC_FLPT_BASE));
-	pgtable <<= PAGE_SHIFT;
+	pgtable <<= PT_BASE_SHIFT;
 
 	info = read_sec_info(MMU_SEC_REG(drvdata, IDX_FAULT_TRANS_INFO));
 
@@ -372,8 +372,7 @@ static void sysmmu_show_secure_fault_information(struct sysmmu_drvdata *drvdata,
 	}
 
 	pr_crit("AxID: %#x, AxLEN: %#x\n", info & 0xFFFF, (info >> 16) & 0xF);
-
-	if (!pfn_valid(pgtable >> PAGE_SHIFT)) {
+	if (!pfn_valid(PFN_DOWN(pgtable))) {
 		pr_crit("Page table base is not in a valid memory region\n");
 		pgtable = 0;
 	}
@@ -422,7 +421,7 @@ static void sysmmu_show_fault_information(struct sysmmu_drvdata *drvdata,
 
 	for (i = 0; i < __max_vids(drvdata); i++) {
 		pgtable[i] = readl_relaxed(MMU_VM_REG(drvdata, IDX_FLPT_BASE, i));
-		pgtable[i] <<= PAGE_SHIFT;
+		pgtable[i] <<= PT_BASE_SHIFT;
 	}
 
 	pr_crit("----------------------------------------------------------\n");
@@ -438,7 +437,7 @@ static void sysmmu_show_fault_information(struct sysmmu_drvdata *drvdata,
 		if (pgtable[i] != drvdata->pgtable[i])
 			pr_crit("Page table (VID %u) base of driver: %pa\n", i,
 				&drvdata->pgtable[i]);
-		if (pgtable[i] && !pfn_valid(pgtable[i] >> PAGE_SHIFT)) {
+		if (pgtable[i] && !pfn_valid(PFN_DOWN(pgtable[i]))) {
 			pr_crit("Page table (VID %u) base is not in a valid memory region\n", i);
 			pgtable[i] = 0;
 		}
@@ -590,7 +589,7 @@ irqreturn_t samsung_sysmmu_irq_thread(int irq, void *dev_id)
 			phys_addr_t pgtable;
 
 			pgtable = readl_relaxed(MMU_VM_REG(drvdata, IDX_FLPT_BASE, vid));
-			pgtable <<= PAGE_SHIFT;
+			pgtable <<= PT_BASE_SHIFT;
 			if (!drvdata->hide_page_fault)
 				sysmmu_show_fault_info_simple(drvdata, itype, vid, addr, &pgtable);
 			sysmmu_clear_interrupt(drvdata, false);
