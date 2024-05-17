@@ -6557,6 +6557,9 @@ dhd_stop(struct net_device *net)
 #ifdef WL_STATIC_IF
 	struct bcm_cfg80211 *cfg = wl_get_cfg(net);
 #endif /* WL_STATIC_IF */
+#if defined(CONFIG_IPV6) && defined(IPV6_NDO_SUPPORT)
+	int ret = 0;
+#endif /* CONFIG_IPV6 && IPV6_NDO_SUPPORT */
 #endif /* WL_CFG80211 */
 	dhd_info_t *dhd = DHD_DEV_INFO(net);
 	int timeleft = 0;
@@ -6682,6 +6685,14 @@ dhd_stop(struct net_device *net)
 #endif /* ARP_OFFLOAD_SUPPORT */
 #if defined(CONFIG_IPV6) && defined(IPV6_NDO_SUPPORT)
 				if (dhd_inet6addr_notifier_registered) {
+					ret = dhd_ndo_remove_ip(&dhd->pub, ifidx);
+					if (ret < 0) {
+						DHD_ERROR(("%s: clear host ipv6 for NDO failed%d\n",
+							__FUNCTION__, ret));
+					} else {
+						DHD_PRINT(("%s: cleared host ipv6 table for NDO \n",
+							__FUNCTION__));
+					}
 					dhd_inet6addr_notifier_registered = FALSE;
 					unregister_inet6addr_notifier(&dhd_inet6addr_notifier);
 				}
