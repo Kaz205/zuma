@@ -388,6 +388,11 @@ int aoc_audio_close(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 			 uint32_t samplerate, uint32_t bps, bool pcm_float_fmt, int source_mode);
 
+#if !IS_ENABLED(CONFIG_SOC_GS101)
+int aoc_voip_set_params(struct aoc_alsa_stream *alsa_stream);
+int aoc_hifi_incall_set_params(struct aoc_alsa_stream *alsa_stream);
+#endif
+
 int aoc_audio_start(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_incall_start(struct aoc_alsa_stream *alsa_stream);
