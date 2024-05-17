@@ -187,7 +187,7 @@ static int map_sys_cfg_resource(struct gxp_virtual_device *vd,
 {
 	struct gxp_dev *gxp = vd->gxp;
 	int ret;
-	const size_t ro_size = PAGE_SIZE;
+	const size_t ro_size = GXP_FW_DATA_SYSCFG_SIZE / 2;
 
 	if (res->daddr == 0)
 		return 0;

@@ -48,7 +48,7 @@ struct gxp_fw_data_manager {
 static void set_system_cfg_region(struct gxp_dev *gxp, void *sys_cfg)
 {
 	struct gxp_system_descriptor_ro *des_ro = sys_cfg;
-	struct gxp_system_descriptor_rw *des_rw = sys_cfg + PAGE_SIZE;
+	struct gxp_system_descriptor_rw *des_rw = sys_cfg + SZ_4K;
 	struct gxp_core_telemetry_descriptor *descriptor =
 		&gxp->data_mgr->core_telemetry_desc;
 	struct telemetry_descriptor_ro *tel_ro;
