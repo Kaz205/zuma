@@ -553,7 +553,8 @@ static void segments_term(struct kbase_device *kbdev, struct sscd_segment* segme
 	kfree(segments[PM_EVENT_LOG].addr);
 	kfree(segments[KTRACE].addr);
 #if MALI_USE_CSF
-	pixel_context_snapshot_term(segments);
+	pixel_context_snapshot_term(&segments[CONTEXTS]);
+	kfree(segments[FW_CORE_DUMP].addr);
 #endif
 	/* Null out the pointers */
 	memset(segments, 0, sizeof(struct sscd_segment) * NUM_SEGMENTS);
@@ -578,9 +579,6 @@ void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
 	unsigned long flags, current_ts = jiffies;
 	struct pixel_gpu_pdc_status pdc_status;
 	static unsigned long last_hang_sscd_ts;
-#if MALI_USE_CSF
-	int fwcd_err;
-#endif
 
 	if (!strcmp(reason, "GPU hang")) {
 		/* GPU hang - avoid multiple coredumps for the same hang until
@@ -602,12 +600,6 @@ void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
 		dev_warn(kbdev->dev, "pixel: failed to report core dump, sscd_report was NULL");
 		return;
 	}
-
-#if MALI_USE_CSF
-	fwcd_err = fw_core_dump_create(kbdev);
-	if (fwcd_err)
-		dev_err(kbdev->dev, "pixel: failed to create firmware core dump (%d)", fwcd_err);
-#endif
 
 	ec = segments_init(kbdev, segs);
 	if (ec != 0) {
@@ -649,8 +641,10 @@ void gpu_sscd_dump(struct kbase_device *kbdev, const char* reason)
 			"could not collect active contexts: rc: %i", ec);
 	}
 
-	if (!fwcd_err)
+	if (!strcmp(reason, "Internal firmware error"))
 		get_and_init_fw_core_dump(kbdev, &segs[FW_CORE_DUMP]);
+	else
+		dev_warn(kbdev->dev, "pixel: sscd: skipping FW core");
 #endif
 
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);

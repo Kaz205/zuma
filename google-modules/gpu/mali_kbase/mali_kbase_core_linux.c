@@ -6141,6 +6141,11 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	struct kbase_device *kbdev;
 	int err = 0;
 
+#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+	if (!google_retrieve_bcl_handle())
+		return -EPROBE_DEFER;
+#endif
+
 	mali_kbase_print_cs_experimental();
 
 	kbdev = kbase_device_alloc();

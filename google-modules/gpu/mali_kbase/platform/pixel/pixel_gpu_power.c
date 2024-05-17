@@ -730,31 +730,6 @@ bool gpu_pm_get_power_state(struct kbase_device *kbdev)
 	return ret;
 }
 
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
-static int google_bcl_callback(struct notifier_block *nb, unsigned long max_clk, void *data) {
-	struct pixel_context *pc = container_of(nb, struct pixel_context, pm.qos_nb);
-	struct kbase_device *kbdev = pc->kbdev;
-	int max_level = -1;
-	int level;
-
-	CSTD_UNUSED(data);
-
-	// Find the throttling level that satisfies the requested maximum clock frequency.
-	for (level = 0; level < pc->dvfs.table_size; level++) {
-		max_level = level;
-		if (pc->dvfs.table[level].clk[GPU_DVFS_CLK_SHADERS] <= max_clk)
-			break;
-	}
-
-	mutex_lock(&pc->dvfs.lock);
-	gpu_dvfs_update_level_lock(kbdev, GPU_DVFS_LEVEL_LOCK_BCL, -1, max_level);
-	gpu_dvfs_select_level(kbdev);
-	mutex_unlock(&pc->dvfs.lock);
-
-	return NOTIFY_OK;
-}
-#endif /* CONFIG_GOOGLE_BCL */
-
 /**
  * gpu_pm_init() - Initializes power management control for a GPU.
  *
@@ -884,14 +859,6 @@ int gpu_pm_init(struct kbase_device *kbdev)
 		return -ENODEV;
 	}
 
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
-	pc->pm.bcl_dev = google_retrieve_bcl_handle();
-	if (pc->pm.bcl_dev) {
-		pc->pm.qos_nb.notifier_call = google_bcl_callback;
-		exynos_pm_qos_add_notifier(PM_QOS_GPU_FREQ_MAX, &pc->pm.qos_nb);
-	}
-#endif
-
 	pc->pm.rail_state_log = gpu_pm_rail_state_log_init(kbdev);
 
 	return 0;
@@ -916,11 +883,6 @@ void gpu_pm_term(struct kbase_device *kbdev)
 
 	gpu_pm_rail_state_log_term(pc->pm.rail_state_log);
 
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
-	if (pc->pm.bcl_dev) {
-		exynos_pm_qos_remove_notifier(PM_QOS_GPU_FREQ_MAX, &pc->pm.qos_nb);
-	}
-#endif
 
 	for (i = 0; i < GPU_PM_DOMAIN_COUNT; i++) {
 		if (pc->pm.domain_devs[i]) {
