@@ -656,6 +656,7 @@ static void memperfd_init(void)
 static u32 mif_cpu_vote(struct pmu_stat *stat, int cpu, u32 cur, u32 *dsu_vote)
 {
 	struct cpufreq_policy *pol = &per_cpu(cached_pol, cpu);
+	int max_freq = pol->cpuinfo.max_freq;
 	u64 cpu_hz, mem_hz;
 	u32 cpu_khz, vote;
 
@@ -693,6 +694,10 @@ static u32 mif_cpu_vote(struct pmu_stat *stat, int cpu, u32 cur, u32 *dsu_vote)
 	find_cpu_freq(pol, ((mem_hz * mif->tbl[cur] / mif->tbl[idx]) +	\
 			    cpu_hz - mem_hz) / HZ_PER_KHZ,		\
 		      CPUFREQ_RELATION_##r)
+
+	if (cpu == 8)
+		max_freq = 2556000;
+
 	/*
 	 * Check if it's possible to change the CPU's frequency by changing MIF
 	 * frequency, which would result in fewer or greater stalled cycles.
@@ -731,7 +736,7 @@ static u32 mif_cpu_vote(struct pmu_stat *stat, int cpu, u32 cur, u32 *dsu_vote)
 				break;
 			}
 		}
-	} else if (cpu_khz < pol->cpuinfo.max_freq) {
+	} else if (cpu_khz < max_freq) {
 		/*
 		 * The current workload is likely memory invariant, and
 		 * therefore shouldn't be affected very much by a change in MIF
