@@ -46,7 +46,11 @@
 #include <trace/events/block.h>
 
 #include "blk.h"
+
 #include "blk-mq.h"
+#ifndef __GENKSYMS__
+#include "blk-mq-debugfs.h"
+#endif
 #include "blk-mq-sched.h"
 #include "blk-pm.h"
 #ifndef __GENKSYMS__
@@ -695,18 +699,15 @@ static inline bool should_fail_request(struct block_device *part,
 
 #endif /* CONFIG_FAIL_MAKE_REQUEST */
 
-static inline bool bio_check_ro(struct bio *bio)
+static inline void bio_check_ro(struct bio *bio)
 {
 	if (op_is_write(bio_op(bio)) && bdev_read_only(bio->bi_bdev)) {
 		if (op_is_flush(bio->bi_opf) && !bio_sectors(bio))
-			return false;
-		pr_warn("Trying to write to read-only block-device %pg\n",
-			bio->bi_bdev);
+			return;
+		pr_warn_ratelimited("Trying to write to read-only block-device %pg\n",
+				    bio->bi_bdev);
 		/* Older lvm-tools actually trigger this */
-		return false;
 	}
-
-	return false;
 }
 
 static noinline int should_fail_bio(struct bio *bio)
@@ -812,8 +813,7 @@ static noinline_for_stack bool submit_bio_checks(struct bio *bio)
 
 	if (should_fail_bio(bio))
 		goto end_io;
-	if (unlikely(bio_check_ro(bio)))
-		goto end_io;
+	bio_check_ro(bio);
 	if (!bio_flagged(bio, BIO_REMAPPED)) {
 		if (unlikely(bio_check_eod(bio)))
 			goto end_io;
@@ -1790,6 +1790,7 @@ int __init blk_dev_init(void)
 		sizeof(struct internal_request_queue), 0, SLAB_PANIC, NULL);
 
 	blk_debugfs_root = debugfs_create_dir("block", NULL);
+	blk_mq_debugfs_init();
 
 	return 0;
 }
