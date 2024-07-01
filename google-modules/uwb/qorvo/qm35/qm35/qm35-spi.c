@@ -928,7 +928,6 @@ static int qm35_pm_resume(struct device *dev)
 #endif /* CONFIG_PM_SLEEP */
 
 static SIMPLE_DEV_PM_OPS(qm35_spi_ops, qm35_pm_suspend, qm35_pm_resume);
-#define pm_sleep_ptr(_ptr) (IS_ENABLED(CONFIG_PM_SLEEP) ? (_ptr) : NULL)
 
 static struct spi_driver qm35_spi_driver = {
 	.driver = {
