@@ -13,12 +13,11 @@
 #include <uapi/linux/mptcp.h>
 #include "protocol.h"
 
-static int subflow_get_info(struct sock *sk, struct sk_buff *skb)
+static int subflow_get_info(const struct sock *sk, struct sk_buff *skb)
 {
 	struct mptcp_subflow_context *sf;
 	struct nlattr *start;
 	u32 flags = 0;
-	bool slow;
 	int err;
 
 	if (inet_sk_state_load(sk) == TCP_LISTEN)
@@ -28,7 +27,6 @@ static int subflow_get_info(struct sock *sk, struct sk_buff *skb)
 	if (!start)
 		return -EMSGSIZE;
 
-	slow = lock_sock_fast(sk);
 	rcu_read_lock();
 	sf = rcu_dereference(inet_csk(sk)->icsk_ulp_data);
 	if (!sf) {
@@ -74,13 +72,11 @@ static int subflow_get_info(struct sock *sk, struct sk_buff *skb)
 	}
 
 	rcu_read_unlock();
-	unlock_sock_fast(sk, slow);
 	nla_nest_end(skb, start);
 	return 0;
 
 nla_failure:
 	rcu_read_unlock();
-	unlock_sock_fast(sk, slow);
 	nla_nest_cancel(skb, start);
 	return err;
 }
