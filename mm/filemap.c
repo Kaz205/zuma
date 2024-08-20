@@ -1710,7 +1710,8 @@ __sched int __lock_page_or_retry(struct page *page, struct mm_struct *mm,
 		if (flags & FAULT_FLAG_RETRY_NOWAIT)
 			return 0;
 
-		mmap_read_unlock(mm);
+		if (!(flags & FAULT_FLAG_SPECULATIVE))
+			mmap_read_unlock(mm);
 		if (flags & FAULT_FLAG_KILLABLE)
 			wait_on_page_locked_killable(page);
 		else
@@ -1722,7 +1723,8 @@ __sched int __lock_page_or_retry(struct page *page, struct mm_struct *mm,
 
 		ret = __lock_page_killable(page);
 		if (ret) {
-			mmap_read_unlock(mm);
+			if (!(flags & FAULT_FLAG_SPECULATIVE))
+				mmap_read_unlock(mm);
 			return 0;
 		}
 	} else {
@@ -2656,6 +2658,15 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 		end_offset = min_t(loff_t, isize, iocb->ki_pos + iter->count);
 
 		/*
+		 * Pairs with a barrier in
+		 * block_write_end()->mark_buffer_dirty() or other page
+		 * dirtying routines like iomap_write_end() to ensure
+		 * changes to page contents are visible before we see
+		 * increased inode size.
+		 */
+		smp_rmb();
+
+		/*
 		 * Once we start copying data, we don't want to be touching any
 		 * cachelines that might be contended:
 		 */
@@ -3265,7 +3276,7 @@ static bool filemap_map_pmd(struct vm_fault *vmf, struct page *page)
 	    }
 	}
 
-	if (pmd_none(*vmf->pmd)) {
+	if (pmd_none(*vmf->pmd) && vmf->prealloc_pte) {
 		vmf->ptl = pmd_lock(mm, vmf->pmd);
 		if (likely(pmd_none(*vmf->pmd))) {
 			mm_inc_nr_ptes(mm);

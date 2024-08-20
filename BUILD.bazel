@@ -101,6 +101,7 @@ filegroup(
         "android/abi_gki_aarch64_mtktv",
         "android/abi_gki_aarch64_oplus",
         "android/abi_gki_aarch64_pixel",
+        "android/abi_gki_aarch64_pixel_watch",
         "android/abi_gki_aarch64_qcom",
         "android/abi_gki_aarch64_rtkstb",
         "android/abi_gki_aarch64_rtktv",
@@ -117,6 +118,7 @@ define_common_kernels(target_configs = {
     "kernel_aarch64": {
         "kmi_symbol_list_strict_mode": True,
         "kmi_symbol_list": "android/abi_gki_aarch64",
+        "rewrite_absolute_paths_in_config": True,
         "kmi_symbol_list_add_only": True,
         "additional_kmi_symbol_lists": [":aarch64_additional_kmi_symbol_lists"],
         "protected_exports_list": "android/abi_gki_protected_exports_aarch64",
@@ -132,6 +134,7 @@ define_common_kernels(target_configs = {
     "kernel_aarch64_debug": {
         "kmi_symbol_list_strict_mode": False,
         "kmi_symbol_list": "android/abi_gki_aarch64",
+        "rewrite_absolute_paths_in_config": True,
         "kmi_symbol_list_add_only": True,
         "additional_kmi_symbol_lists": [":aarch64_additional_kmi_symbol_lists"],
         "protected_exports_list": "android/abi_gki_protected_exports_aarch64",
@@ -776,7 +779,6 @@ ddk_headers(
         "drivers/usb/host/xhci-mvebu.h",
         "drivers/usb/host/xhci-plat.h",
         "drivers/usb/host/xhci-rcar.h",
-        "drivers/usb/typec/tcpm/tcpci.h",
     ],
     # The list of include directories where source files can #include headers
     # from. In other words, these are the `-I` option to the C compiler.
