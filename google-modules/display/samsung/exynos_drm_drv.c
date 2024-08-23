@@ -927,6 +927,8 @@ static const struct drm_ioctl_desc exynos_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(EXYNOS_HISTOGRAM_CANCEL, histogram_cancel_ioctl, 0),
 	DRM_IOCTL_DEF_DRV(EXYNOS_HISTOGRAM_CHANNEL_REQUEST, histogram_channel_request_ioctl, 0),
 	DRM_IOCTL_DEF_DRV(EXYNOS_HISTOGRAM_CHANNEL_CANCEL, histogram_channel_cancel_ioctl, 0),
+	DRM_IOCTL_DEF_DRV(EXYNOS_CONTEXT_HISTOGRAM_EVENT_REQUEST, histogram_event_request_ioctl, 0),
+	DRM_IOCTL_DEF_DRV(EXYNOS_CONTEXT_HISTOGRAM_EVENT_CANCEL, histogram_event_cancel_ioctl, 0),
 };
 
 static const struct file_operations exynos_drm_driver_fops = {

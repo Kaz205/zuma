@@ -241,14 +241,12 @@ enum bist_pattern_type {
 };
 
 // InfoFrame
-#define	INFOFRAME_PACKET_TYPE_AVI 0x82		/** Auxiliary Video information InfoFrame */
-#define INFOFRAME_PACKET_TYPE_AUDIO 0x84	/** Audio information InfoFrame */
+#define INFOFRAME_PACKET_TYPE_SPD 0x83		/* Source Product Description InfoFrame */
+#define INFOFRAME_PACKET_TYPE_AUDIO 0x84	/* Audio Information InfoFrame */
 #define MAX_INFOFRAME_LENGTH 27
 
-#define AVI_INFOFRAME_VERSION 0x02
-#define AVI_INFOFRAME_LENGTH 0x0D
-#define ACTIVE_FORMAT_INFO_PRESENT (1 << 4)	/* No Active Format Information */
-#define ACTIVE_PORTION_ASPECT_RATIO (0x8 << 0)	/* Same as Picture Aspect Ratio */
+#define SPD_INFOFRAME_VERSION 0x01
+#define SPD_INFOFRAME_LENGTH 25
 
 #define AUDIO_INFOFRAME_VERSION 0x01
 #define AUDIO_INFOFRAME_LENGTH 0x0A

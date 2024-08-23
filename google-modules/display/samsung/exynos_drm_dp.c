@@ -194,6 +194,10 @@ static bool dp_edid_hexdump = false;
 module_param(dp_edid_hexdump, bool, 0664);
 MODULE_PARM_DESC(dp_edid_hexdump, "Enable/disable DP EDID hexdump");
 
+static bool dp_audio = true;
+module_param(dp_audio, bool, 0664);
+MODULE_PARM_DESC(dp_audio, "Enable/disable DP audio");
+
 static int dp_emulation_mode;
 
 static void dp_fill_host_caps(struct dp_device *dp)
@@ -821,6 +825,11 @@ static int dp_do_full_link_training(struct dp_device *dp, u32 interval_us)
 	bool training_done = false;
 
 	do {
+		if (dp_get_hpd_state(dp) == EXYNOS_HPD_UNPLUG) {
+			dp_info(dp, "DP Link: detected pending HPD UNPLUG\n");
+			goto err;
+		}
+
 		// Link Training: CR (Clock Revovery)
 		if (!dp_do_link_training_cr(dp, interval_us)) {
 			if (drm_dp_link_rate_to_bw_code(dp->link.link_rate) !=
@@ -1143,27 +1152,44 @@ static void dp_set_video_timing(struct dp_device *dp)
 							      SYNC_POSITIVE;
 }
 
-static u8 dp_get_vic(struct dp_device *dp)
+static int dp_make_avi_infoframe_data(struct dp_device *dp, struct infoframe *avi_infoframe)
 {
-	dp->cur_mode_vic = drm_match_cea_mode(&dp->cur_mode);
-	return dp->cur_mode_vic;
-}
+	int ret;
+	struct hdmi_avi_infoframe infoframe;
+	u8 buffer[HDMI_INFOFRAME_SIZE(AVI)];
 
-static int dp_make_avi_infoframe_data(struct dp_device *dp,
-				      struct infoframe *avi_infoframe)
-{
-	int i;
+	ret = drm_hdmi_avi_infoframe_from_display_mode(&infoframe, &dp->connector, &dp->cur_mode);
+	if (ret < 0) {
+		dp_err(dp, "failed to setup AVI infoframe: %d\n", ret);
+		return ret;
+	}
 
-	avi_infoframe->type_code = INFOFRAME_PACKET_TYPE_AVI;
-	avi_infoframe->version_number = AVI_INFOFRAME_VERSION;
-	avi_infoframe->length = AVI_INFOFRAME_LENGTH;
+	/*
+	 * drm_hdmi_avi_infoframe_from_display_mode() might not always figure out
+	 * the picture aspect ratio correctly, if the current mode does not match
+	 * exactly one of the CEA VIC modes. If that's the case, then we try to
+	 * fix it here.
+	 */
+	if (infoframe.picture_aspect == HDMI_PICTURE_ASPECT_NONE) {
+		u16 hdisplay = dp->cur_mode.hdisplay;
+		u16 vdisplay = dp->cur_mode.vdisplay;
 
-	for (i = 0; i < AVI_INFOFRAME_LENGTH; i++)
-		avi_infoframe->data[i] = 0x00;
+		if (hdisplay == vdisplay * 16 / 9)
+			infoframe.picture_aspect = HDMI_PICTURE_ASPECT_16_9;
+		else if (hdisplay == vdisplay * 4 / 3)
+			infoframe.picture_aspect = HDMI_PICTURE_ASPECT_4_3;
+	}
 
-	avi_infoframe->data[0] |= ACTIVE_FORMAT_INFO_PRESENT;
-	avi_infoframe->data[1] |= ACTIVE_PORTION_ASPECT_RATIO;
-	avi_infoframe->data[3] = dp_get_vic(dp);
+	ret = hdmi_avi_infoframe_pack(&infoframe, buffer, sizeof(buffer));
+	if (ret < 0) {
+		dp_err(dp, "failed to pack AVI infoframe: %d\n", ret);
+		return ret;
+	}
+
+	avi_infoframe->type_code = buffer[0];
+	avi_infoframe->version_number = buffer[1];
+	avi_infoframe->length = buffer[2];
+	memcpy(&avi_infoframe->data[0], &buffer[4], avi_infoframe->length);
 
 	return 0;
 }
@@ -1172,19 +1198,23 @@ static int dp_set_avi_infoframe(struct dp_device *dp)
 {
 	struct infoframe avi_infoframe;
 
-	dp_make_avi_infoframe_data(dp, &avi_infoframe);
-	dp_hw_send_avi_infoframe(avi_infoframe);
+	if (!dp_make_avi_infoframe_data(dp, &avi_infoframe))
+		dp_hw_send_avi_infoframe(avi_infoframe);
 
 	return 0;
 }
 
 static int dp_make_spd_infoframe_data(struct infoframe *spd_infoframe)
 {
-	spd_infoframe->type_code = 0x83;
-	spd_infoframe->version_number = 0x1;
-	spd_infoframe->length = 25;
+	spd_infoframe->type_code = INFOFRAME_PACKET_TYPE_SPD;
+	spd_infoframe->version_number = SPD_INFOFRAME_VERSION;
+	spd_infoframe->length = SPD_INFOFRAME_LENGTH;
 
-	strncpy(&spd_infoframe->data[0], "SEC.GED", 8);
+	/* Data bytes 1-8: vendor name */
+	strncpy(&spd_infoframe->data[0], "Google", 6);
+
+	/* Data bytes 9-24: product description */
+	strncpy(&spd_infoframe->data[8], "Pixel", 5);
 
 	return 0;
 }
@@ -1213,8 +1243,23 @@ static int dp_make_audio_infoframe_data(struct dp_device *dp,
 	for (i = 0; i < AUDIO_INFOFRAME_LENGTH; i++)
 		audio_infoframe->data[i] = 0x00;
 
-	/* Data Byte 1, PCM type and audio channel count */
-	audio_infoframe->data[0] = ((u8)dp->hw_config.num_audio_ch - 1);
+	/*
+	 * Currently, DP audio stream is always supposed to be:
+	 * PCM, 2 channels, 48 kHz, 16-bit
+	 */
+	if (dp->hw_config.num_audio_ch != 2)
+		dp_warn(dp, "%s: num_audio_ch != 2\n", __func__);
+	if (dp->hw_config.audio_fs != FS_48KHZ)
+		dp_warn(dp, "%s: audio_fs != 48 kHz\n", __func__);
+	if (dp->hw_config.audio_bit != AUDIO_16_BIT)
+		dp_warn(dp, "%s: audio_bit != 16-bit\n", __func__);
+
+	/* Data Byte 1, PCM type + audio channel count - 1 */
+	audio_infoframe->data[0] = (HDMI_AUDIO_CODING_TYPE_PCM << 4) | 0x1;
+
+	/* Data Byte 2, Sample frequency + sample size */
+	audio_infoframe->data[1] = (HDMI_AUDIO_SAMPLE_FREQUENCY_48000 << 2) |
+				   HDMI_AUDIO_SAMPLE_SIZE_16;
 
 	/* Data Byte 4, how various speaker locations are allocated */
 	if (dp->hw_config.num_audio_ch == 8)
@@ -1395,6 +1440,11 @@ static void dp_sad_to_audio_info(struct dp_device *dp, struct cea_sad *sads)
 		dp_info(dp, "EDID: PCM audio: ch: %u, sample_rates: 0x%02x, bit_rates: 0x%02x\n",
 			dp->sink.audio_ch_num, dp->sink.audio_sample_rates,
 			dp->sink.audio_bit_rates);
+
+	if (!dp_audio) {
+		dp_info(dp, "DP audio path is disabled: dp_audio=N\n");
+		dp->sink.has_pcm_audio = false;
+	}
 }
 
 static const u8 dp_fake_edid[EDID_LENGTH] = {
@@ -1459,6 +1509,21 @@ done:
 	drm_mode_copy(&dp->cur_mode, mode);
 }
 
+static int dp_wait_state_change(struct dp_device *dp, int max_wait_time, enum dp_state state)
+{
+	int wait_cnt = max_wait_time;
+
+	do {
+		wait_cnt--;
+		usleep_range(1000, 1030);
+	} while ((state != dp->state) && (wait_cnt > 0));
+
+	dp_info(dp, "dp_wait_state_change: time = %d ms, state = %d\n",
+		max_wait_time - wait_cnt, state);
+
+	return (wait_cnt > 0) ? wait_cnt : -ETIME;
+}
+
 static void dp_on_by_hpd_plug(struct dp_device *dp)
 {
 	struct drm_connector *connector = &dp->connector;
@@ -1466,6 +1531,7 @@ static void dp_on_by_hpd_plug(struct dp_device *dp)
 	struct edid *edid;
 	struct cea_sad *sads;
 	struct drm_display_mode *fs_mode;
+	int timeout;
 
 	edid = drm_do_get_edid(connector, dp_get_edid_block, dp);
 	if (!edid) {
@@ -1502,6 +1568,11 @@ static void dp_on_by_hpd_plug(struct dp_device *dp)
 	dp->state = DP_STATE_ON;
 	dp_info(dp, "%s: DP State changed to ON\n", __func__);
 
+	if (dp_get_hpd_state(dp) == EXYNOS_HPD_UNPLUG) {
+		dp_info(dp, "%s: detected pending HPD UNPLUG\n", __func__);
+		return;
+	}
+
 	if (dp->bist_mode == DP_BIST_OFF) {
 		/*
 		 * Notify userspace only about DP video path here.
@@ -1513,6 +1584,12 @@ static void dp_on_by_hpd_plug(struct dp_device *dp)
 			dp_info(dp,
 				"call drm_kms_helper_hotplug_event (connected)\n");
 			drm_kms_helper_hotplug_event(dev);
+
+			/* Wait for DRM/KMS to call dp_enable() */
+			timeout = dp_wait_state_change(dp, 1000, DP_STATE_RUN);
+			if (timeout == -ETIME) {
+				dp_warn(dp, "dp_wait_state_change: timeout for enable\n");
+			}
 		}
 	} else {
 		/* BIST mode */
@@ -1547,34 +1624,11 @@ static int dp_wait_audio_state_change(struct dp_device *dp, int max_wait_time,
 
 }
 
-static int dp_wait_state_change(struct dp_device *dp, int max_wait_time,
-				enum dp_state state)
-{
-	int ret = 0;
-	int wait_cnt = max_wait_time;
-
-	do {
-		wait_cnt--;
-		usleep_range(1000, 1030);
-	} while ((state != dp->state) && (wait_cnt > 0));
-
-	dp_info(dp, "dp_wait_state_change: time = %d ms, state = %d\n",
-		max_wait_time - wait_cnt, state);
-
-	if (wait_cnt == 0) {
-		dp_err(dp, "dp_wait_state_change: timeout\n");
-		ret = -ETIME;
-	} else
-		ret = wait_cnt;
-
-	return ret;
-}
-
 static void dp_off_by_hpd_plug(struct dp_device *dp)
 {
 	struct drm_connector *connector = &dp->connector;
 	struct drm_device *dev = connector->dev;
-	int timeout = 0;
+	int timeout;
 
 	if (dp->state >= DP_STATE_ON) {
 		if (dp->bist_mode == DP_BIST_OFF) {
@@ -1602,7 +1656,7 @@ static void dp_off_by_hpd_plug(struct dp_device *dp)
 					dp_err(dp, "dp_wait_audio_state_change: timeout for disable\n");
 			}
 
-			/* Wait DRM/KMS Stop */
+			/* Wait for DRM/KMS to call dp_disable() */
 			timeout = dp_wait_state_change(dp, 3000, DP_STATE_ON);
 			if (timeout == -ETIME) {
 				dp_err(dp, "dp_wait_state_change: timeout for disable\n");

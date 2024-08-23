@@ -351,9 +351,19 @@ struct drm_exynos_file_private {
 	u32 dummy;
 };
 
+struct histogram_event_node {
+	struct drm_pending_event *base;
+	struct list_head node;
+};
+
 struct exynos_drm_pending_histogram_event {
 	struct drm_pending_event base;
 	struct exynos_drm_histogram_channel_event event;
+};
+
+struct exynos_drm_pending_context_histogram_event {
+	struct drm_pending_event base;
+	struct exynos_drm_context_histogram_event event;
 };
 
 struct exynos_drm_priv_state {

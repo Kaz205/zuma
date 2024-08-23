@@ -182,10 +182,9 @@ struct dp_device {
 	int dp_hotplug_error_code;
 
 	/* DP Driver State */
-	enum dp_state state;
+	volatile enum dp_state state;
 
 	/* DRM Mode */
-	int cur_mode_vic; /* VIC number of cur_mode */
 	struct drm_display_mode cur_mode;
 	int num_modes;
 	int num_sads;
