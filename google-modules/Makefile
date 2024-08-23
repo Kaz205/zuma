@@ -31,6 +31,6 @@ obj-y += touch/common/
 obj-y += touch/fts/ftm5/
 obj-y += touch/goodix/
 obj-y += trusty/
-obj-y += uwb/
+obj-y += uwb/qorvo/qm35/qm35s/
 obj-y += video/gchips/
 obj-y += wlan/bcmdhd/bcm4398/
