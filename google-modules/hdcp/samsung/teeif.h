@@ -287,6 +287,7 @@ enum hdcp_auth_cmd {
 	HDCP_CMD_SESSION_SET,
 	HDCP_CMD_SET_TEST_MODE,
 	HDCP_CMD_CONNECT_INFO,
+	HDCP_CMD_GET_CP_LVL,
 };
 
 void hdcp_tee_init(void);
@@ -299,6 +300,7 @@ int hdcp_tee_send_cmd(uint32_t cmd);
 int hdcp_tee_check_protection(int* version);
 int hdcp_tee_set_test_mode(bool enable);
 int hdcp_tee_connect_info(int connect_info);
+int hdcp_tee_get_cp_level(uint32_t* requested_lvl);
 
 /* HDCP TEE interfaces */
 int teei_gen_rtx(uint32_t lk_type,

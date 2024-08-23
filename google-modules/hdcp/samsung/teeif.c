@@ -287,6 +287,10 @@ int hdcp_tee_connect_info(int connect_info) {
 	return hdcp_tee_comm_xchg(HDCP_CMD_CONNECT_INFO, connect_info, NULL, NULL);
 }
 
+int hdcp_tee_get_cp_level(uint32_t* requested_lvl) {
+	return hdcp_tee_comm_xchg(HDCP_CMD_GET_CP_LVL, 0, requested_lvl, NULL);
+}
+
 static int hdcp_tee_comm(struct hci_message *hci) {
 	return hdcp_tee_comm_xchg(HDCP_CMD_PROTOCOL, 0, NULL, hci);
 }
