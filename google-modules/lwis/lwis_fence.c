@@ -256,8 +256,8 @@ int lwis_fence_create(struct lwis_device *lwis_dev)
 
 struct file *lwis_fence_get(struct lwis_client *client, int fd)
 {
-	struct file *fence_fp = NULL;
-	struct lwis_fence *fence = NULL;
+	struct file *fence_fp;
+	struct lwis_fence *fence;
 
 	fence_fp = fget(fd);
 	if (fence_fp == NULL) {
@@ -340,6 +340,7 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 
 	fp = lwis_fence_get(client, fence_fd);
 	if (fp == NULL) {
+		kfree(pending_transaction_id);
 		return -EBADF;
 	}
 	lwis_fence = fp->private_data;
@@ -606,7 +607,7 @@ int lwis_initialize_transaction_fences(struct lwis_client *client,
 
 int lwis_add_completion_fence(struct lwis_client *client, struct lwis_transaction *transaction)
 {
-	struct file *fp = NULL;
+	struct file *fp;
 	struct lwis_fence *lwis_fence;
 	struct lwis_fence_pending_signal *fence_pending_signal;
 	struct lwis_device *lwis_dev = client->lwis_dev;
