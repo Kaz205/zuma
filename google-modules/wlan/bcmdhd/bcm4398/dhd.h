@@ -963,7 +963,8 @@ typedef enum dhd_ring_id {
 	DEBUG_DUMP_RING1_ID = 0x8,
 	DEBUG_DUMP_RING2_ID = 0x9,
 	MEM_DUMP_RING_ID = 0xa,
-	DEBUG_RING_ID_MAX = 0xb
+	ECNTRS_RING_ID = 0xb,
+	DEBUG_RING_ID_MAX = 0xc
 } dhd_ring_id_t;
 
 #define DHD_PCIE_WRAPPER_LEN (20 * 1024)
@@ -1651,6 +1652,7 @@ typedef struct dhd_pub {
 #ifdef DHD_COREDUMP
 	uint8 *coredump_mem;
 	uint32 coredump_len;
+	uint32 uc_status;		/* PCIE Uncorrectable Error Status */
 	uint8 ewp_init_state;
 	char memdump_str[DHD_MEMDUMP_LONGSTR_LEN];
 #endif /* DHD_COREDUMP */

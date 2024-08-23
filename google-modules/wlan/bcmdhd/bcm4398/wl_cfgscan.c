@@ -1577,6 +1577,42 @@ chanspec_t wl_freq_to_chanspec(int freq)
 	return chanspec;
 }
 
+/*
+ * Return chan_info from driver cached values for cases
+ * except where channel flag can be dynamically change.
+ */
+s32
+wl_cfgscan_get_dynamic_chan_info(struct bcm_cfg80211 *cfg,
+		u32 *chan_info, chanspec_t in_chspec, u32 chan_info_flags)
+{
+	struct net_device *dev = bcmcfg_to_prmry_ndev(cfg);
+	s32 ret = BCME_OK;
+	u32 local_chaninfo;
+	u8 ioctl_buf[WLC_IOCTL_SMLEN];
+	/* If channel information doesn't change dynamic, retrieve it
+	 * from cfg80211 cache. But if its radar/indoor channel it could
+	 * change dynamically based on STA connection.
+	 */
+	if (wl_cfgscan_get_chan_info(cfg,
+		&local_chaninfo, in_chspec) == BCME_OK) {
+		if (!(local_chaninfo & chan_info_flags)) {
+			*chan_info = local_chaninfo;
+			return BCME_OK;
+		}
+	}
+	bzero(ioctl_buf, WLC_IOCTL_SMLEN);
+	ret = wldev_iovar_getbuf(dev, "per_chan_info",
+			(void *)&in_chspec, sizeof(in_chspec),
+			ioctl_buf, WLC_IOCTL_SMLEN, NULL);
+	if (ret != BCME_OK) {
+		WL_ERR(("Failed to get per_chan_info chspec:0x%x, error:%d\n",
+				in_chspec, ret));
+		return BCME_ERROR;
+	}
+	*chan_info = dtoh32(*(uint *)ioctl_buf);
+	return ret;
+}
+
 s32
 wl_cfgscan_get_chan_info(struct bcm_cfg80211 *cfg,
 		u32 *chan_info, chanspec_t in_chspec)
@@ -6761,8 +6797,8 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 	for (i = 0, j = 0; i < freq_list_len; i++) {
 		chspeclist[j] = wl_freq_to_chanspec(pElem_freq[i]);
 		if (CHSPEC_IS6G(chspeclist[j])) {
-			if ((wl_cfgscan_get_chan_info(cfg,
-				&chan_info, chspeclist[j]) == BCME_OK) &&
+			if ((wl_cfgscan_get_dynamic_chan_info(cfg, &chan_info,
+				chspeclist[j], WL_CHAN_INDOOR_ONLY) == BCME_OK) &&
 				(!(chan_info & WL_CHAN_BAND_6G_PSC) ||
 				!(chan_info & WL_CHAN_BAND_6G_VLP))) {
 				/* Skip non PSC channels */
@@ -6776,8 +6812,8 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 		/* Skip UNII-4 frequencies */
 		if (CHSPEC_IS5G(chspeclist[j])) {
 			if (IS_UNII4_CHANNEL(wf_chspec_center_channel(chspeclist[j])) ||
-				((wl_cfgscan_get_chan_info(cfg,
-				&chan_info, chspeclist[j]) == BCME_OK) &&
+				((wl_cfgscan_get_dynamic_chan_info(cfg,
+				&chan_info, chspeclist[j], WL_CHAN_INDOOR_ONLY) == BCME_OK) &&
 				wl_is_chan_info_restricted(chan_info, chspeclist[j]))) {
 				WL_DBG_MEM(("Skipped UNII-4/restricted chanspec 0x%x\n",
 					chspeclist[j]));
@@ -6787,8 +6823,8 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 #endif /* WL_UNII4_CHAN */
 
 		if (CHSPEC_IS2G(chspeclist[j])) {
-			if ((wl_cfgscan_get_chan_info(cfg,
-				&chan_info, chspeclist[j]) == BCME_OK) &&
+			if ((wl_cfgscan_get_dynamic_chan_info(cfg,
+				&chan_info, chspeclist[j], WL_CHAN_INDOOR_ONLY) == BCME_OK) &&
 				wl_is_chan_info_restricted(chan_info, chspeclist[j])) {
 				WL_DBG_MEM(("Skipped restricted chanspec 0x%x\n",
 					chspeclist[j]));

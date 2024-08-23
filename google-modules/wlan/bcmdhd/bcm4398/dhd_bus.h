@@ -470,6 +470,7 @@ int dhd_bus_alloc_ewp_etb_config_mem(struct dhd_bus *bus);
 void dhd_bus_dealloc_ewp_etb_config_mem(struct dhd_bus *bus);
 #ifdef DHD_COREDUMP
 extern void dhd_get_ewp_init_state(struct dhd_bus *bus, uint8 *init_state);
+extern void dhd_coredump_add_status(char* buf, char *err_tag, uint32 status);
 #endif /* DHD_COREDUMP */
 
 void dhd_bus_update_flow_watermark_stats(struct dhd_bus *bus, uint16 flowid, uint16 rd,

@@ -5920,17 +5920,18 @@ wl_notify_connect_status_ap(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		wl_wps_session_update(ndev, WPS_STATE_LINKUP, e->addr.octet);
 #endif /* WL_WPS_SYNC */
 	} else if ((event == WLC_E_DEAUTH_IND) ||
-		((event == WLC_E_DEAUTH) && (reason != DOT11_RC_RESERVED)) ||
-		(event == WLC_E_DISASSOC_IND)) {
-		/*
-		 * WAR: Dongle sends WLC_E_DEAUTH event with DOT11_RC_RESERVED
-		 * to delete flowring in case of PCIE Full dongle.
-		 * By deleting flowring on SoftAP interface we can avoid any issues
-		 * due to stale/bad state of flowring.
-		 * Therefore, we don't need to notify the client dissaociation to Hostapd
-		 * in this case.
-		 * Please refer to the RB:115182 to understand the case more clearly.
-		 */
+		(event == WLC_E_DEAUTH) || (event == WLC_E_DISASSOC_IND)) {
+
+		if ((event == WLC_E_DEAUTH) && (reason == DOT11_RC_RESERVED)) {
+			/* reason DOT11_RC_RESERVED is used for FW generated event to
+			 * clean up flowring and other states for cases where FW receives
+			 * a connection request from an already associated STA. so previous
+			 * auth is no longer valid and fresh connection needs to be attempted.
+			 */
+			WL_INFORM_MEM(("DEAUTH with reason:0. Prev auth no longer valid\n"));
+			reason = DOT11_RC_AUTH_INVAL;
+		}
+
 		WL_INFORM_MEM(("[%s] del sta event for "MACDBG "\n",
 			ndev->name, MAC2STRDBG(e->addr.octet)));
 		cfg80211_del_sta(ndev, e->addr.octet, GFP_ATOMIC);

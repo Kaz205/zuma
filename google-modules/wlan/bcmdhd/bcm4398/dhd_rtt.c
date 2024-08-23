@@ -273,6 +273,9 @@ static int dhd_rtt_ac_az_ftm_config(dhd_pub_t *dhd, wl_proxd_session_id_t sessio
 #ifdef WL_NAN
 static void dhd_rtt_trigger_pending_targets_on_session_end(dhd_pub_t *dhd);
 #endif /* WL_NAN */
+#ifdef DHD_RTT_USE_FTM_RANGE
+static int dhd_rtt_stop_ranging(dhd_pub_t *dhd);
+#endif /* DHD_RTT_USE_FTM_RANGE */
 #endif /* WL_CFG80211 */
 static const int burst_duration_idx[]  = {0, 0, 1, 2, 4, 8, 16, 32, 64, 128, 0, 0};
 
@@ -3000,6 +3003,9 @@ dhd_rtt_stop(dhd_pub_t *dhd, struct ether_addr *mac_list, int mac_cnt)
 		if (delayed_work_pending(&rtt_status->proxd_timeout)) {
 			dhd_cancel_delayed_work(&rtt_status->proxd_timeout);
 		}
+#ifdef DHD_RTT_USE_FTM_RANGE
+		dhd_rtt_stop_ranging(dhd);
+#endif /* DHD_RTT_USE_FTM_RANGE */
 		dhd_rtt_delete_session(dhd, FTM_DEFAULT_SESSION);
 #ifdef WL_NAN
 		dhd_rtt_delete_nan_session(dhd);
@@ -4438,7 +4444,7 @@ dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data
 	/* show 'avg_rtt' sample */
 	/* in v2, avg_rtt is the first element of the variable rtt[] */
 	p_sample_avg = &p_data_info->rtt[0];
-	ftm_tmu_value_to_logstr(ltoh16_ua(&p_sample_avg->rtt.tmu));
+
 	DHD_RTT((">\tavg_rtt sample: rssi=%d rtt=%d%s std_deviation =%d.%d"
 		"ratespec=0x%08x chanspec=0x%08x\n",
 		(int16) ltoh16_ua(&p_sample_avg->rssi),
@@ -4503,19 +4509,22 @@ dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data
 		rtt_report->rtt = (wifi_timespan)(FTM_INTVL2NSEC(&rtt) * 1000);
 	}
 
-	rtt_report->rtt_sd = ltoh16_ua(&p_data_info->sd_rtt); /* nano -> 0.1 nano */
-	DHD_RTT(("rtt_report->rtt : %lld\n", rtt_report->rtt));
-	DHD_RTT(("rtt_report->rssi : %d (0.5db)\n", rtt_report->rssi));
+	/* sd_rtt is in 0.1ps unit. rtt_sd in rtt_report should be in picosecond unit */
+	rtt_report->rtt_sd = ltoh16_ua(&p_data_info->sd_rtt) / 10u; /* 0.1 pico -> pico */
+	DHD_RTT(("rtt_report->rtt : %lld %s rtt_sd : %lld %s rtt_report->rssi : %d (0.5db)\n",
+		rtt_report->rtt, ftm_tmu_value_to_logstr(rtt.tmu),
+		rtt_report->rtt_sd, ftm_tmu_value_to_logstr(rtt.tmu),
+		rtt_report->rssi));
 
 	/* average distance */
 	if (avg_dist != FTM_INVALID) {
 		rtt_report->distance = (avg_dist >> 8) * 1000; /* meter -> mm */
-		rtt_report->distance += (avg_dist & 0xff) * 1000 / 256;
-		/* rtt_sd is in 0.1 ns.
+		rtt_report->distance += ((avg_dist & 0xff) * 1000) / 256;
+		/* rtt_report->rtt_sd is converted to ps.
 		* host needs distance_sd in milli mtrs
-		* (0.1 * rtt_sd/2 * 10^-9) * C * 1000
+		* (1 * rtt_sd/2 * 10^-12) * C * 1000
 		*/
-		rtt_report->distance_sd = rtt_report->rtt_sd * 15; /* mm */
+		rtt_report->distance_sd = (rtt_report->rtt_sd * 15) / 100u; /* mm */
 	} else {
 		rtt_report->distance = FTM_INVALID;
 	}

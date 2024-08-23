@@ -20281,6 +20281,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	char trap_code[DHD_TRAP_CODE_LEN] = {0};
 	char trap_subcode[DHD_TRAP_CODE_LEN] = {0};
 	int written_len;
+	uint32 uc_status;
 	uint8 ewp_init_state;
 #endif /* DHD_COREDUMP */
 	uint32 memdump_type;
@@ -20303,6 +20304,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	memdump_type = dhdp->memdump_type;
 #ifdef DHD_COREDUMP
 	ewp_init_state = dhdp->ewp_init_state;
+	uc_status = dhdp->uc_status;
 #endif /* DHD_COREDUMP */
 
 	DHD_GENERAL_LOCK(dhdp, flags);
@@ -20478,6 +20480,9 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 		written_len = strlen(dhdp->memdump_str);
 		snprintf(&dhdp->memdump_str[written_len], DHD_MEMDUMP_LONGSTR_LEN - written_len,
 			 "_%.79s_%.79s", pc_fn, lr_fn);
+
+		/* append additional status code with tag string */
+		dhd_coredump_add_status(dhdp->memdump_str, "UC", uc_status);
 	} else if (memdump_type == DUMP_TYPE_DONGLE_INIT_FAILURE) {
 		snprintf(&dhdp->memdump_str[written_len], DHD_MEMDUMP_LONGSTR_LEN - written_len,
 			"_0x%x", ewp_init_state);
