@@ -599,6 +599,10 @@ static void sysmmu_show_secure_fault_information(struct sysmmu_drvdata *drvdata,
 		MMU_VERSION_MAJOR(info0), MMU_VERSION_MINOR(info0), MMU_VERSION_REVISION(info0),
 		read_sec_info(sfrbase + REG_MMU_STATUS));
 
+	pr_crit("MMU_CTRL_VM: %#010x, MMU_CFG_VM: %#010x\n",
+		read_sec_info(MMU_VM_ADDR(sfrbase + REG_MMU_CTRL_VM, vmid)),
+		read_sec_info(MMU_VM_ADDR(sfrbase + REG_MMU_CONTEXT0_CFG_ATTRIBUTE_VM, vmid)));
+
 finish:
 	pr_crit("----------------------------------------------------------\n");
 }
@@ -807,8 +811,7 @@ irqreturn_t samsung_sysmmu_irq_thread(int irq, void *dev_id)
 	if (vmid)
 		fi.event.fault.event.flags |= IOMMU_FAULT_UNRECOV_PASID_VALID;
 	fi.event.fault.event.reason = reason;
-	if (reason == IOMMU_FAULT_REASON_PTE_FETCH ||
-	    reason == IOMMU_FAULT_REASON_PERMISSION)
+	if (reason == IOMMU_FAULT_REASON_PTE_FETCH)
 		fi.event.fault.type = IOMMU_FAULT_PAGE_REQ;
 
 	ret = iommu_group_for_each_dev(group, &fi,
