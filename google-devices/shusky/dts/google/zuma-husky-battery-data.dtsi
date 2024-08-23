@@ -51,10 +51,10 @@ maxim,config {
 		>;
 	};
 
-	/* HK3_ATL(3340)_RC2_Rev4.txt b/309039411#comment4 */
+	/* HK3_ATL(3340)_RC2_Rev5.txt b/335076546#comment1 */
 	maxim,atl-a1-1k {
 		maxim,batt-id-kohm = <1>;
-		maxim,model-version = <4>;
+		maxim,model-version = <5>;
 		maxim,force-reset-model-data;
 		maxim,rc1-tempco = /bits/ 16 <0x0e1f>;
 		maxim,fg-model = /bits/ 16 <
@@ -67,7 +67,7 @@ maxim,config {
 		>;
 		maxim,fg-params = /bits/ 16 <
 			/* 0x0036 */	0xf060	/* IAvgEmpty */
-			/* 0x002a */	0x083b	/* RelaxCFG */
+			/* 0x002a */	0x1439	/* RelaxCFG */
 			/* 0x0028 */	0x260e	/* LearnCFG */
 			/* 0x001D */	0x4217	/* Config */
 			/* 0x00BB */	0x0090	/* Config2 */
@@ -96,10 +96,10 @@ maxim,config {
 		>;
 	};
 
-	/* HK3_COS(3341)_RC2_Rev4.txt b/309039411#comment4 */
+	/* HK3_COS(3341)_RC2_Rev5.txt b/335076546#comment1 */
 	maxim,cos-a1-2k {
 		maxim,batt-id-kohm = <2>;
-		maxim,model-version = <4>;
+		maxim,model-version = <5>;
 		maxim,force-reset-model-data;
 		maxim,rc1-tempco = /bits/ 16 <0x0f1f>;
 		maxim,fg-model = /bits/ 16 <
@@ -112,7 +112,7 @@ maxim,config {
 		>;
 		maxim,fg-params = /bits/ 16 <
 			/* 0x0036 */	0xf060	/* IAvgEmpty */
-			/* 0x002a */	0x083b	/* RelaxCFG */
+			/* 0x002a */	0x1439	/* RelaxCFG */
 			/* 0x0028 */	0x260e	/* LearnCFG */
 			/* 0x001D */	0x4217	/* Config */
 			/* 0x00BB */	0x0090	/* Config2 */
