@@ -29,11 +29,11 @@ struct edgetpu_iommu {
 	/*
 	 * IOMMU domains currently attached.
 	 * NULL for a slot that doesn't have an attached domain.
+	 * `domains[0]` is always NULL.
 	 */
-	struct gcip_iommu_domain *gdomains[EDGETPU_NCONTEXTS];
+	struct edgetpu_iommu_domain *etdomains[EDGETPU_NCONTEXTS];
 	/*
-	 * Pointer to the default domain. `domains[0]` will always point to `default_domain`, if
-	 * initialization of this structure is successful.
+	 * Pointer to the default domain.
 	 */
 	struct gcip_iommu_domain *default_gdomain;
 	/*
@@ -52,16 +52,6 @@ struct edgetpu_iommu {
 	struct gcip_iommu_domain_pool domain_pool;
 };
 
-/*
- * Return context ID enumeration value as a Process Address Space ID.
- * Caller ensures context_id is valid, i.e. does not equal to
- * EDGETPU_CONTEXT_INVALID or OR'ed with EDGETPU_CONTEXT_DOMAIN_TOKEN.
- */
-static uint context_id_to_pasid(enum edgetpu_context_id context_id)
-{
-	return (uint)context_id;
-}
-
 static struct gcip_iommu_domain *get_domain_by_token(struct edgetpu_iommu *etiommu, int token)
 {
 	struct gcip_iommu_domain *gdomain;
@@ -75,26 +65,23 @@ static struct gcip_iommu_domain *get_domain_by_token(struct edgetpu_iommu *etiom
 static struct gcip_iommu_domain *get_domain_by_context_id(struct edgetpu_dev *etdev,
 							  enum edgetpu_context_id ctx_id)
 {
-	struct gcip_iommu_domain *gdomain = NULL;
 	struct edgetpu_iommu *etiommu = etdev->mmu_cookie;
-	uint pasid;
+	int i;
 
 	/* always return the default domain when AUX is not supported */
-	if (!etiommu->aux_enabled)
+	if (!etiommu->aux_enabled || ctx_id == EDGETPU_CONTEXT_KCI)
 		return etiommu->default_gdomain;
 	if (ctx_id == EDGETPU_CONTEXT_INVALID)
 		return NULL;
 	if (ctx_id & EDGETPU_CONTEXT_DOMAIN_TOKEN)
 		return get_domain_by_token(
 			etiommu, ctx_id ^ EDGETPU_CONTEXT_DOMAIN_TOKEN);
-	pasid = context_id_to_pasid(ctx_id);
-	if (pasid < EDGETPU_NCONTEXTS)
-		gdomain = etiommu->gdomains[pasid];
-
+        for (i = 1; i < EDGETPU_NCONTEXTS; i++) {
+		if (etiommu->etdomains[i] && etiommu->etdomains[i]->context_id == ctx_id)
+			return etiommu->etdomains[i]->gdomain;
+	}
 	/* Fall back to default domain. */
-	if (!gdomain)
-		gdomain = etiommu->default_gdomain;
-	return gdomain;
+	return etiommu->default_gdomain;
 }
 
 bool edgetpu_mmu_is_context_using_default_domain(struct edgetpu_dev *etdev,
@@ -218,7 +205,6 @@ static int check_default_domain(struct edgetpu_dev *etdev,
 	}
 out:
 	etiommu->default_gdomain = gdomain;
-	etiommu->gdomains[0] = gdomain;
 	return 0;
 }
 
@@ -291,16 +277,16 @@ void edgetpu_mmu_detach(struct edgetpu_dev *etdev)
 			   ret);
 	for (i = etiommu->context_0_default ? 1 : 0; i < EDGETPU_NCONTEXTS;
 	     i++) {
-		if (etiommu->gdomains[i])
-			iommu_aux_detach_device(etiommu->gdomains[i]->domain, etdev->dev);
+		if (etiommu->etdomains[i])
+			iommu_aux_detach_device(etiommu->etdomains[i]->gdomain->domain, etdev->dev);
 	}
 
 	if (etiommu->iommu_group)
 		iommu_group_put(etiommu->iommu_group);
 
 	/* free the domain if the context 0 domain is not default */
-	if (!etiommu->context_0_default && etiommu->gdomains[0])
-		gcip_iommu_domain_pool_free_domain(&etiommu->domain_pool, etiommu->gdomains[0]);
+	if (!etiommu->context_0_default && etiommu->default_gdomain)
+		gcip_iommu_domain_pool_free_domain(&etiommu->domain_pool, etiommu->default_gdomain);
 
 	idr_for_each(&etiommu->domain_id_pool, edgetpu_idr_free_domain_callback,
 		     etiommu);
@@ -549,12 +535,12 @@ int edgetpu_mmu_attach_domain(struct edgetpu_dev *etdev,
 		goto err_detach;
 	}
 	/* the IOMMU driver returned a duplicate PASID */
-	if (etiommu->gdomains[pasid]) {
+	if (etiommu->etdomains[pasid]) {
 		ret = -EBUSY;
 		goto err_detach;
 	}
 
-	etiommu->gdomains[pasid] = gdomain;
+	etiommu->etdomains[pasid] = etdomain;
 	etdomain->pasid = pasid;
 	return 0;
 err_detach:
@@ -573,7 +559,7 @@ void edgetpu_mmu_detach_domain(struct edgetpu_dev *etdev,
 	if (pasid <= 0 || pasid >= EDGETPU_NCONTEXTS)
 		return;
 
-	etiommu->gdomains[pasid] = NULL;
+	etiommu->etdomains[pasid] = NULL;
 	etdomain->pasid = IOMMU_PASID_INVALID;
 	iommu_aux_detach_device(etdomain->gdomain->domain, etdev->dev);
 }

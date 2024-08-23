@@ -610,24 +610,22 @@ void edgetpu_soc_thermal_exit(struct edgetpu_dev *etdev)
 		exynos_pm_qos_remove_notifier(PM_QOS_TPU_FREQ_MAX, nb);
 }
 
-int edgetpu_soc_activate_context(struct edgetpu_dev *etdev, int pasid)
+int edgetpu_soc_activate_context(struct edgetpu_dev *etdev, int scid, int pasid)
 {
 	const uint vid = pasid;
 
-	if (vid >= EDGETPU_MAX_STREAM_ID)
+	if (scid >= EDGETPU_MAX_STREAM_ID)
 		return -EINVAL;
 
-	set_ssmt_vid(etdev, vid, vid);
+	set_ssmt_vid(etdev, scid, vid);
 
 	return 0;
 }
 
-void edgetpu_soc_deactivate_context(struct edgetpu_dev *etdev, int pasid)
+void edgetpu_soc_deactivate_context(struct edgetpu_dev *etdev, int scid)
 {
-	const uint vid = pasid;
-
-	if (vid >= EDGETPU_MAX_STREAM_ID)
+	if (scid >= EDGETPU_MAX_STREAM_ID)
 		return;
 
-	set_ssmt_vid(etdev, vid, 0);
+	set_ssmt_vid(etdev, scid, 0);
 }

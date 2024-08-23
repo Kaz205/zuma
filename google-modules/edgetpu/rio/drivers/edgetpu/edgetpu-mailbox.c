@@ -11,6 +11,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/err.h>
 #include <linux/kernel.h>
+#include <linux/mm.h> /* PAGE_ALIGNED */
 #include <linux/mmzone.h> /* MAX_ORDER_NR_PAGES */
 #include <linux/slab.h>
 
@@ -218,7 +219,7 @@ edgetpu_mailbox_vii_add(struct edgetpu_mailbox_manager *mgr, uint id)
 		uint i;
 
 		for (i = mgr->vii_index_from; i < mgr->vii_index_to; i++) {
-			if (!mgr->mailboxes[i]) {
+			if (!mgr->mailboxes[i] && PAGE_ALIGNED(mgr->get_context_csr_base(i))) {
 				id = i;
 				break;
 			}
@@ -337,10 +338,7 @@ int edgetpu_mailbox_init_vii(struct edgetpu_vii *vii,
 	const struct edgetpu_mailbox_attr *attr = &group->mbox_attr;
 	int ret;
 
-	if (!group->etdomain || group->etdomain->pasid == IOMMU_PASID_INVALID)
-		mailbox = edgetpu_mailbox_vii_add(mgr, 0);
-	else
-		mailbox = edgetpu_mailbox_vii_add(mgr, group->etdomain->pasid);
+	mailbox = edgetpu_mailbox_vii_add(mgr, 0);
 	if (IS_ERR(mailbox))
 		return PTR_ERR(mailbox);
 

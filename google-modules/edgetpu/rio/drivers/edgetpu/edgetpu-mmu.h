@@ -41,6 +41,12 @@ struct edgetpu_iommu_domain {
 	 * edgetpu_mmu_detach_domain().
 	 */
 	uint pasid;
+        /*
+	 * The context ID used in the firmware side. This field is only valid when the group of this
+	 * domain has VII context associated. This is used to support finding this domain given the
+	 * context ID.
+	 */
+	enum edgetpu_context_id context_id;
 	struct gcip_iommu_domain *gdomain;
 	/*
 	 * A token set by edgetpu_mmu_alloc_domain(). See the description of
