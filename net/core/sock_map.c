@@ -1578,7 +1578,7 @@ void sock_map_close(struct sock *sk, long timeout)
 		rcu_read_unlock();
 		sk_psock_stop(psock);
 		release_sock(sk);
-		cancel_delayed_work_sync(&psock->work);
+		cancel_work_sync(&psock->work);
 		sk_psock_put(sk, psock);
 	} else {
 		saved_close = READ_ONCE(sk->sk_prot)->close;
@@ -1586,7 +1586,6 @@ no_psock:
 		rcu_read_unlock();
 		release_sock(sk);
 	}
-
 	/* Make sure we do not recurse. This is a bug.
 	 * Leak the socket instead of crashing on a stack overflow.
 	 */

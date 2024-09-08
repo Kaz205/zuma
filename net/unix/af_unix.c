@@ -509,7 +509,9 @@ static void unix_sock_destructor(struct sock *sk)
 		unix_release_addr(u->addr);
 
 	atomic_long_dec(&unix_nr_socks);
+	local_bh_disable();
 	sock_prot_inuse_add(sock_net(sk), sk->sk_prot, -1);
+	local_bh_enable();
 #ifdef UNIX_REFCNT_DEBUG
 	pr_debug("UNIX %p is destroyed, %ld are still alive.\n", sk,
 		atomic_long_read(&unix_nr_socks));
@@ -882,7 +884,9 @@ static struct sock *unix_create1(struct net *net, struct socket *sock, int kern,
 	memset(&u->scm_stat, 0, sizeof(struct scm_stat));
 	unix_insert_socket(unix_sockets_unbound(sk), sk);
 
+	local_bh_disable();
 	sock_prot_inuse_add(sock_net(sk), sk->sk_prot, 1);
+	local_bh_enable();
 
 	return sk;
 
@@ -1331,6 +1335,7 @@ static int unix_stream_connect(struct socket *sock, struct sockaddr *uaddr,
 	struct sock *other = NULL;
 	struct sk_buff *skb = NULL;
 	unsigned int hash;
+	int st;
 	int err;
 	long timeo;
 
@@ -1412,7 +1417,9 @@ restart:
 
 	   Well, and we have to recheck the state after socket locked.
 	 */
-	switch (READ_ONCE(sk->sk_state)) {
+	st = sk->sk_state;
+
+	switch (st) {
 	case TCP_CLOSE:
 		/* This is ok... continue with connect */
 		break;
@@ -1427,7 +1434,7 @@ restart:
 
 	unix_state_lock_nested(sk, U_LOCK_SECOND);
 
-	if (sk->sk_state != TCP_CLOSE) {
+	if (sk->sk_state != st) {
 		unix_state_unlock(sk);
 		unix_state_unlock(other);
 		sock_put(other);
