@@ -172,6 +172,7 @@ struct samsung_pin_bank {
 	const char	*name;
 
 	u32		pin_base;
+	bool		probe_done;
 	void		*soc_priv;
 	struct device_node *of_node;
 	struct samsung_pinctrl_drv_data *drvdata;

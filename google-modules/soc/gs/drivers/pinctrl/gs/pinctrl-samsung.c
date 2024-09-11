@@ -761,6 +761,9 @@ static int samsung_gpio_to_irq(struct gpio_chip *gc, unsigned offset)
 	struct samsung_pin_bank *bank = gpiochip_get_data(gc);
 	unsigned int virq;
 
+	if (!bank->probe_done)
+		return -EPROBE_DEFER;
+
 	if (!bank->irq_domain)
 		return -ENXIO;
 
@@ -1084,6 +1087,15 @@ static int samsung_gpiolib_register(struct platform_device *pdev,
 	return 0;
 }
 
+static void samsung_gpiolib_probe_done(struct samsung_pinctrl_drv_data *drvdata)
+{
+	struct samsung_pin_bank *bank = drvdata->pin_banks;
+	int i;
+
+	for (i = 0; i < drvdata->nr_banks; ++i, ++bank)
+		bank->probe_done = true;
+}
+
 static const struct samsung_pin_ctrl *
 samsung_pinctrl_get_soc_data_for_of_alias(struct platform_device *pdev)
 {
@@ -1240,6 +1252,7 @@ static int samsung_pinctrl_probe(struct platform_device *pdev)
 		ctrl->eint_gpio_init(drvdata);
 	if (ctrl->eint_wkup_init)
 		ctrl->eint_wkup_init(drvdata);
+	samsung_gpiolib_probe_done(drvdata);
 
 	platform_set_drvdata(pdev, drvdata);
 
