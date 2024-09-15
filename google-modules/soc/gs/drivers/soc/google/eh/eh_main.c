@@ -1259,7 +1259,7 @@ static int eh_of_probe(struct platform_device *pdev)
 {
 	struct eh_device *eh_dev;
 	struct resource *mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	int irqs[EH_MAX_DCMD + 2], nr_irqs = 0, ret;
+	int irqs[EH_MAX_DCMD + 2], nr_irqs = 0, ret = 0;
 	unsigned short quirks = 0;
 	struct clk *clk;
 

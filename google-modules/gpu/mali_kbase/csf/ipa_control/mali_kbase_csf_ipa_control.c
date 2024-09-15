@@ -712,9 +712,8 @@ exit:
 }
 KBASE_EXPORT_TEST_API(kbase_ipa_control_unregister);
 
-int kbase_ipa_control_query(struct kbase_device *kbdev, const void *client,
-			    u64 *values, size_t num_values, u64 *protected_time,
-			    ktime_t *now)
+int kbase_ipa_control_query(struct kbase_device *kbdev, const void *client, u64 *values,
+			    size_t num_values, u64 *protected_time, ktime_t *now)
 {
 	struct kbase_ipa_control *ipa_ctrl;
 	struct kbase_ipa_control_session *session;
